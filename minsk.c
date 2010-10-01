@@ -202,6 +202,34 @@ static void noins(void)
   stop("ILLEGAL INSTRUCTION");
 }
 
+static void print_ins(int x, int y)
+{
+  word yy = rd(y);
+  int pos = x & 0177;
+  int r = (x >> 9) & 7;
+
+  if (x & 0400)
+    {
+      // r bit 0 = line feed
+      // r bit 1 = clear buffer
+      // r bit 2 = print
+      return;
+    }
+
+  switch (r)
+    {
+    case 0:				// Decimal float
+    case 1:				// Octal number
+    case 2:				// Decimal fixed
+    case 3:				// Decimal unsigned
+    case 4:				// One Russian symbol
+    case 5:				// Russian text
+    case 6:				// One Latin symbol
+    case 7:				// Latin text
+      noins();
+    }
+}
+
 static void run(void)
 {
   for (;;)
@@ -398,35 +426,35 @@ static void run(void)
 		(((((a >> 12) & 07777) + (b >> 12) & 07777) & 07777) << 12) |
 		(((a & 07777) + (b & 07777)) & 07777);
 	  wr(ix, acc);
-	  ip = x & 07777;
+	  ip = x;
 	  break;
 	case 0130:		// Jump
 	  wr(y, r2);
-	  ip = x & 07777;
+	  ip = x;
 	  break;
 	case 0131:		// Jump to subroutine
-	  wr(y, (030ULL << 30) | ((ip & 07777ULL) << 12));
-	  ip = x & 07777;
+	  wr(y, acc = ((030ULL << 30) | ((ip & 07777ULL) << 12)));
+	  ip = x;
 	  break;
 	case 0132:		// Jump if positive
 	  if (wsign(r2) >= 0)
-	    ip = x & 07777;
+	    ip = x;
 	  else
-	    ip = y & 07777;
+	    ip = y;
 	  break;
 	case 0133:		// Jump if overflow
 	  // Since we always trap on overflow, this instruction always jumps to the 1st address
-	  ip = x & 07777;
+	  ip = x;
 	  break;
 	case 0134:		// Jump if zero
 	  if (flag_zero)
-	    ip = y & 07777;
+	    ip = y;
 	  else
-	    ip = x & 07777;
+	    ip = x;
 	  break;
 	case 0135:		// Jump if key pressed
 	  // No keys are ever pressed, so always jump to 2nd
-	  ip = y & 07777;
+	  ip = y;
 	  break;
 	case 0136:		// Interrupt masking
 	  notimp();
@@ -436,7 +464,12 @@ static void run(void)
 	  notimp();
 	case 0150 ... 0154:	// I/O
 	  notimp();
-	case 0160 ... 0163:	// I/O
+	case 0160 ... 0161:	// I/O
+	  notimp();
+	case 0162:		// Printing
+	  print_ins(x, y);
+	  break;
+	case 0163:		// I/O
 	  notimp();
 	case 0170:		// FIX multiplication, bottom part
 	  afetch();
