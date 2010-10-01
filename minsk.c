@@ -9,11 +9,9 @@
  *	- time limit
  *	- error messages
  *	- debugging/play mode
- *	- implement shifts
- *	- which instructions should modify the accumulator?
  *	- implement printing
  *	- floating point?
- *	- simulate R1 and R2?
+ *	- we probably have to disable NOP
  */
 
 #include <stdio.h>
@@ -74,6 +72,12 @@ static int inrange(long long x)
 static int fracinrange(double d)
 {
   return (d > -1. && d < 1.);
+}
+
+static int wexp(word w)
+{
+  int exp = w & 077;
+  return (w & 0100 ? -exp : exp);
 }
 
 static word mem[4096];
@@ -158,7 +162,8 @@ static void parse_in(void)
     }
 }
 
-static word acc, prev_acc;
+static word acc;
+static word r1, r2, current_ins;
 static int flag_zero = 0;
 static int ip = 00050;			// Standard program start location
 static int prev_ip;
@@ -166,7 +171,7 @@ static int prev_ip;
 static void stop(char *reason)
 {
   printf("MACHINE STOPPED -- %s\n", reason);
-  printf("IP:%04o ACC:%c%012llo\n", prev_ip, WF(acc));
+  printf("IP:%04o ACC:%c%012llo R1:%c%012llo R2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
   exit(0);
 }
 
@@ -177,16 +182,19 @@ static void over(void)
 
 static void nofpu(void)
 {
+  acc = current_ins;
   stop("NO FPU");
 }
 
 static void notimp(void)
 {
+  acc = current_ins;
   stop("NOT IMPLEMENTED");
 }
 
 static void noins(void)
 {
+  acc = current_ins;
   stop("ILLEGAL INSTRUCTION");
 }
 
@@ -194,9 +202,10 @@ static void run(void)
 {
   for (;;)
     {
-      prev_acc = acc;
+      r2 = acc;
       prev_ip = ip;
       word w = mem[ip];
+      current_ins = w;
 
       int op = (w >> 30) & 0177;	// Operation code
       int ax = (w >> 28) & 3;		// Address extensions not supported
@@ -228,15 +237,16 @@ static void run(void)
       word a, b, c;
       long long aa, bb, cc;
       double ad, bd, cd;
+      int i;
 
       auto void afetch(void);
       void afetch(void)
 	{
 	  if (op & 2)
-	    a = prev_acc;
+	    a = r2;
 	  else
 	    a = rd(yi);
-	  b = rd(xi);
+	  b = r1 = rd(xi);
 	}
 
       auto void astore(word result);
@@ -277,8 +287,8 @@ static void run(void)
 	  nofpu();
 	case 030 ... 033:	// FIX multiplication
 	  afetch();
+	  // XXX: We ignore the rounding mode settings
 	  cd = wtofrac(a) * wtofrac(b);
-	  // FIXME: Rounding?
 	  astore(wfromfrac(cd));
 	  break;
 	case 034 ... 037:	// FP multiplication
@@ -296,7 +306,7 @@ static void run(void)
 	  break;
 	case 044 ... 047:	// FP division
 	  nofpu();
-	case 050 ... 053:	// subtraction of abs values
+	case 050 ... 053:	// FIX subtraction of abs values
 	  afetch();
 	  cc = wabs(a) - wabs(b);
 	  if (!inrange(cc))
@@ -306,9 +316,27 @@ static void run(void)
 	case 054 ... 057:	// FP subtraction of abs values
 	  nofpu();
 	case 060 ... 063:	// Shift logical
-	  notimp();	// XXX
+	  afetch();
+	  i = wexp(b);
+	  if (i <= -37 || i >= 37)
+	    astore(0);
+	  else if (i >= 0)
+	    astore((a << i) & WORD_MASK);
+	  else
+	    astore(a >> (-i));
+	  break;
 	case 064 ... 067:	// Shift arithmetical
-	  notimp();	// XXX
+	  afetch();
+	  i = wexp(b);
+	  aa = wabs(a);
+	  if (i <= -36 || i >= 36)
+	    cc = 0;
+	  else if (i >= 0)
+	    cc = (aa << i) & VAL_MASK;
+	  else
+	    cc = aa >> (-i);
+	  astore((a & SIGN_MASK) | wfromll(cc));
+	  break;
 	case 070 ... 073:	// And
 	  afetch();
 	  astore(a&b);
@@ -319,7 +347,7 @@ static void run(void)
 	  break;
 
 	case 0100:		// Halt
-	  // r1 = rd(x);
+	  r1 = rd(x);
 	  acc = rd(y);
 	  stop("HALTED");
 	case 0103:		// I/O magtape
@@ -333,18 +361,18 @@ static void run(void)
 	case 0107:		// Reverse tape
 	  notimp();
 	case 0110:		// Move
-	  wr(yi, rd(xi));
+	  wr(yi, r1 = acc = rd(xi));
 	  break;
 	case 0111:		// Move negative
-	  wr(yi, rd(xi) ^ SIGN_MASK);
+	  wr(yi, acc = (r1 = rd(xi)) ^ SIGN_MASK);
 	  break;
 	case 0112:		// Move absolute value
-	  wr(yi, rd(xi) & VAL_MASK);
+	  wr(yi, acc = (r1 = rd(xi)) & VAL_MASK);
 	  break;
 	case 0113:		// Read from keyboard
 	  notimp();
 	case 0114:		// Copy sign
-	  wr(yi, rd(yi) ^ (rd(xi) & SIGN_MASK));
+	  wr(yi, acc = rd(yi) ^ ((r1 = rd(xi)) & SIGN_MASK));
 	  break;
 	case 0115:		// Read code from R1 (obscure)
 	  notimp();
@@ -355,18 +383,19 @@ static void run(void)
 	case 0120:		// Loop
 	  if (!ix)
 	    noins();
-	  a = rd(ix);
+	  a = r1 = rd(ix);
 	  aa = (a >> 24) & 017777;
 	  if (!aa)
 	    break;
 	  b = rd(y);		// (a mountain range near Prague)
-	  wr(ix, ((aa-1) << 24) |
-		 (((((a >> 12) & 07777) + (b >> 12) & 07777) & 07777) << 12) |
-		 (((a & 07777) + (b & 07777)) & 07777));
+	  acc = ((aa-1) << 24) |
+		(((((a >> 12) & 07777) + (b >> 12) & 07777) & 07777) << 12) |
+		(((a & 07777) + (b & 07777)) & 07777);
+	  wr(ix, acc);
 	  ip = x & 07777;
 	  break;
 	case 0130:		// Jump
-	  wr(y, prev_acc);
+	  wr(y, r2);
 	  ip = x & 07777;
 	  break;
 	case 0131:		// Jump to subroutine
@@ -374,7 +403,7 @@ static void run(void)
 	  ip = x & 07777;
 	  break;
 	case 0132:		// Jump if positive
-	  if (wsign(prev_acc) >= 0)
+	  if (wsign(r2) >= 0)
 	    ip = x & 07777;
 	  else
 	    ip = y & 07777;
@@ -405,6 +434,8 @@ static void run(void)
 	  notimp();
 	case 0170:		// FIX multiplication, bottom part
 	  afetch();
+	  if (wtofrac(a) * wtofrac(b) >= .1/(1ULL << 32))
+	    over();
 	  acc = wfromll(((unsigned long long)wabs(a) * (unsigned long long)wabs(b)) & VAL_MASK);
 	  // XXX: What should be the sign? The book does not define that.
 	  break;
@@ -424,30 +455,33 @@ static void run(void)
 	case 0173:		// Sub exponents
 	  nofpu();
 	case 0174:		// Addition in one's complement
-	  a = rd(xi);
+	  a = r1 = rd(xi);
 	  b = rd(yi);
 	  c = a + b;
 	  if (c > VAL_MASK)
 	    c = c - VAL_MASK;
-	  // XXX: What happens with the accumulator?
 	  wr(yi, c);
+	  // XXX: The effect on the accumulator is undocumented, but likely to be as follows:
+	  acc = c;
 	  break;
 	case 0175:		// Normalization
 	  nofpu();
 	case 0176:		// Population count
-	  a = rd(xi);
+	  a = r1 = rd(xi);
 	  cc = 0;
 	  for (int i=0; i<36; i++)
 	    if (a & (1ULL << i))
 	      cc++;
-	  wr(yi, wfromll(cc));
+	  // XXX: Guessing that acc gets a copy of the result
+	  acc = wfromll(cc);
+	  wr(yi, acc);
 	  break;
 	default:
 	  noins();
 	}
 
       flag_zero = !acc;
-      printf("\tACC:%c%012llo Z:%d\n", WF(acc), flag_zero);
+      printf("\tACC:%c%012llo R1:%c%012llo R2:%c%012llo Z:%d\n", WF(acc), WF(r1), WF(r2), flag_zero);
     }
 }
 
