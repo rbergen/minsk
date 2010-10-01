@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <assert.h>
 
+static int trace = 3;
+
 // Minsk-2 has 37-bit words in sign-magnitude representation (bit 36 = sign)
 typedef unsigned long long int word;
 
@@ -85,14 +87,16 @@ static word mem[4096];
 static word rd(int addr)
 {
   word val = addr ? mem[addr] : 0;
-  printf("\tRD %04o = %c%012llo\n", addr, WF(val));
+  if (trace > 2)
+    printf("\tRD %04o = %c%012llo\n", addr, WF(val));
   return val;
 }
 
 static void wr(int addr, word val)
 {
   assert(!(val & ~(WORD_MASK)));
-  printf("\tWR %04o = %c%012llo\n", addr, WF(val));
+  if (trace > 2)
+    printf("\tWR %04o = %c%012llo\n", addr, WF(val));
   mem[addr] = val;
 }
 
@@ -213,13 +217,14 @@ static void run(void)
       int x = (w >> 12) & 07777;	// Operands (original form)
       int y = w & 07777;
       int xi=x, yi=y;			// (indexed form)
-      printf("@%04o  %c%02o %02o %04o %04o\n",
-	ip,
-	(w & SIGN_MASK) ? '-' : '+',
-	(int)((w >> 30) & 077),
-	(int)((w >> 24) & 077),
-	x,
-	y);
+      if (trace)
+	printf("@%04o  %c%02o %02o %04o %04o\n",
+	  ip,
+	  (w & SIGN_MASK) ? '-' : '+',
+	  (int)((w >> 30) & 077),
+	  (int)((w >> 24) & 077),
+	  x,
+	  y);
       if (ix)
 	{
 	  if (op != 0120)
@@ -227,7 +232,8 @@ static void run(void)
 	      word i = rd(ix);
 	      xi = (xi + (int)((i >> 12) & 07777)) & 07777;
 	      yi = (yi + (int)(i & 07777)) & 07777;
-	      printf("\tIndexing -> %04o %04o\n", xi, yi);
+	      if (trace > 2)
+		printf("\tIndexing -> %04o %04o\n", xi, yi);
 	    }
 	}
       ip = (ip+1) & 07777;
@@ -481,7 +487,8 @@ static void run(void)
 	}
 
       flag_zero = !acc;
-      printf("\tACC:%c%012llo R1:%c%012llo R2:%c%012llo Z:%d\n", WF(acc), WF(r1), WF(r2), flag_zero);
+      if (trace > 1)
+	printf("\tACC:%c%012llo R1:%c%012llo R2:%c%012llo Z:%d\n", WF(acc), WF(r1), WF(r2), flag_zero);
     }
 }
 
