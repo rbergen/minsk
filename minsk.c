@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <assert.h>
 
 static int trace = 3;
@@ -122,6 +123,8 @@ static void parse_in(void)
       *eol = 0;
 
       char *c = line;
+      if (!c[0] || c[0] == ';')
+	continue;
       if (c[0] == '@')
 	{
 	  c++;
@@ -202,6 +205,69 @@ static void noins(void)
   stop("ILLEGAL INSTRUCTION");
 }
 
+static uint16_t linebuf[128];
+
+static uint16_t russian_chars[64] = {
+	'0',	'1',	'2',	'3',	'4',	'5',	'6',	'7',	// 0x
+	'8',	'9',	'+',	'-',	'/',	',',	'.',	' ',	// 1x
+	0x2169,	'^',	'(',	')',	0x00d7,	'=',	';',	'[',	// 2x
+	']',	'*',	'`',	'\'',	0x2260,	'<',	'>',	':',	// 3x
+	0x410,	0x411,	0x412,	0x413,	0x414,	0x415,	0x416,	0x417,	// 4x
+	0x418,	0x419,	0x41a,	0x41b,	0x41c,	0x41d,	0x41e,	0x41f,	// 5x
+	0x420,	0x421,	0x422,	0x423,	0x424,	0x425,	0x426,	0x427,	// 6x
+	0x428,	0x429,	0x42b,	0x42c,	0x42d,	0x42e,	0x42f,	0x2013	// 7x
+};
+
+static uint16_t latin_chars[64] = {
+	'0',	'1',	'2',	'3',	'4',	'5',	'6',	'7',	// 0x
+	'8',	'9',	'+',	'-',	'/',	',',	'.',	' ',	// 1x
+	0x2169,	'^',	'(',	')',	0x00d7,	'=',	';',	'[',	// 2x
+	']',	'*',	'`',	'\'',	0x2260,	'<',	'>',	':',	// 3x
+	'A',	'B',	'W',	'G',	'D',	'E',	'V',	'Z',	// 4x
+	'I',	'J',	'K',	'L',	'M',	'N',	'O',	'P',	// 5x
+	'R',	'S',	'T',	'U',	'F',	'H',	'C',	' ',	// 6x
+	' ',	' ',	'Y',	'X',	' ',	' ',	'Q',	0x2013	// 7x
+};
+
+static void print_line(int r)
+{
+  /*
+   *  Meaning of bits of r:
+   *	0 = perform line feed
+   *	1 = clear buffer
+   *	2 = actually print
+   */
+  if (r & 4)
+    {
+      for (int i=0; i<128; i++)
+	{
+	  int ch = linebuf[i];
+	  if (!ch)
+	    ch = ' ';
+	  if (ch < 0x80)
+	    putchar(ch);
+	  else if (ch < 0x800)
+	    {
+	      putchar(0xc0 | (ch >> 6));
+	      putchar(0x80 | (ch & 0x3f));
+	    }
+	  else
+	    {
+	      putchar(0xe0 | (ch >> 12));
+	      putchar(0x80 | ((ch >> 6) & 0x3f));
+	      putchar(0x80 | (ch & 0x3f));
+	    }
+	}
+    }
+  if (r & 2)
+    memset(linebuf, 0, sizeof(linebuf));
+  if (r & 1)
+    putchar('\n');
+  else
+    putchar('\r');
+  fflush(stdout);
+}
+
 static void print_ins(int x, int y)
 {
   word yy = rd(y);
@@ -210,24 +276,95 @@ static void print_ins(int x, int y)
 
   if (x & 0400)
     {
-      // r bit 0 = line feed
-      // r bit 1 = clear buffer
-      // r bit 2 = print
+      print_line(r);
       return;
     }
 
+  char *fmt;
+  int bit = 37;
+  int eat = 0;
   switch (r)
     {
     case 0:				// Decimal float
+      fmt = "+dddddddx+xbd";
+      break;
     case 1:				// Octal number
+      fmt = "+oooooooooooo";
+      break;
     case 2:				// Decimal fixed
+      fmt = "+ddddddddd";
+      break;
     case 3:				// Decimal unsigned
+      fmt = "x ddddddddd";
+      eat = 1;
+      break;
     case 4:				// One Russian symbol
+      bit = 6;
+      fmt = "r";
+      break;
     case 5:				// Russian text
+      fmt = "xrrrrrr";
+      break;
     case 6:				// One Latin symbol
-    case 7:				// Latin text
-      noins();
+      bit = 6;
+      fmt = "l";
+      break;
+    default:				// Latin text
+      fmt = "xllllll";
     }
+
+  while (*fmt)
+    {
+      int ch;
+      switch (*fmt++)
+	{
+	case 'x':
+	  bit--;
+	  continue;
+	case ' ':
+	  ch = ' ';
+	  break;
+	case '+':
+	  bit--;
+	  ch = (yy & (1ULL << bit)) ? '-' : '+';
+	  break;
+	case 'b':
+	  bit--;
+	  ch = '0' + ((yy >> bit) & 1);
+	  break;
+	case 'o':
+	  bit -= 3;
+	  ch = '0' + ((yy >> bit) & 7);
+	  break;
+	case 'd':
+	  bit -= 4;
+	  ch = '0' + ((yy >> bit) & 15);
+	  if (ch > '0' + 9)
+	    ch += 7;
+	  break;
+	case 'r':
+	  bit -= 6;
+	  ch = russian_chars[(yy >> bit) & 077];
+	  break;
+	case 'l':
+	  bit -= 6;
+	  ch = latin_chars[(yy >> bit) & 077];
+	  break;
+	default:
+	  assert(0);
+	}
+
+      if (eat && *fmt)
+	{
+	  if (ch == '0' || ch == ' ')
+	    ch = ' ';
+	  else
+	    eat = 0;
+	}
+      linebuf[pos] = ch;
+      pos = (pos+1) & 0177;
+    }
+  assert(!bit);
 }
 
 static void run(void)
