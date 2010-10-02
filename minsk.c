@@ -6,7 +6,6 @@
 
 /*
  * TODO:
- *	- time limit
  *	- error messages
  *	- debugging/play mode
  *	- we probably have to disable NOP
@@ -27,6 +26,8 @@
 #include <math.h>
 
 static int trace = 3;
+static int cpu_quota = -1;
+static int print_quota = -1;
 
 // Minsk-2 has 37-bit words in sign-magnitude representation (bit 36 = sign)
 typedef unsigned long long int word;
@@ -293,6 +294,8 @@ static void print_line(int r)
    */
   if (r & 4)
     {
+      if (print_quota > 0 && !--print_quota)
+	stop("OUT OF PAPER");
       for (int i=0; i<128; i++)
 	{
 	  int ch = linebuf[i];
@@ -317,7 +320,7 @@ static void print_line(int r)
     memset(linebuf, 0, sizeof(linebuf));
   if (r & 1)
     putchar('\n');
-  else
+  else if (r & 4)
     putchar('\r');
   fflush(stdout);
 }
@@ -456,6 +459,9 @@ static void run(void)
 	    }
 	}
       ip = (ip+1) & 07777;
+
+      if (cpu_quota > 0 && !--cpu_quota)
+	stop("TIMED OUT");
 
       /* Arithmetic operations */
 
