@@ -9,9 +9,14 @@
  *	- time limit
  *	- error messages
  *	- debugging/play mode
- *	- implement printing
- *	- floating point?
  *	- we probably have to disable NOP
+ */
+
+/*
+ * Things that are not implemented:
+ *	- rounding modes
+ *	- exact behavior of accumulator/R1/R2 (the manual lacks details)
+ *	- exact behavior of negative zero
  */
 
 #include <stdio.h>
@@ -19,6 +24,7 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <assert.h>
+#include <math.h>
 
 static int trace = 3;
 
@@ -67,12 +73,12 @@ static word wfromfrac(double d)
   return wfromll((long long)(d * (double)(1ULL << 36)));
 }
 
-static int inrange(long long x)
+static int int_in_range(long long x)
 {
   return (x >= -(long long)VAL_MASK && x <= (long long)VAL_MASK);
 }
 
-static int fracinrange(double d)
+static int frac_in_range(double d)
 {
   return (d > -1. && d < 1.);
 }
@@ -81,6 +87,61 @@ static int wexp(word w)
 {
   int exp = w & 077;
   return (w & 0100 ? -exp : exp);
+}
+
+static word wputexp(word w, int exp)
+{
+  return ((w & ~(word)0177) | ((exp < 0) ? 0100 | (-exp) : exp));
+}
+
+static int wmanti(word w)
+{
+  return ((w >> 8) & ((1 << 28) - 1));
+}
+
+static double wtofloat(word w)
+{
+  double x = wmanti(w);
+  return ldexp(x, wexp(w) - 28);
+}
+
+static int float_in_range(double x)
+{
+  x = fabs(x);
+  return (x <= ldexp((1 << 28) - 1, 63 - 28));
+}
+
+static word wfromfloat(double x, int normalized)
+{
+  word w = 0;
+  if (x < 0)
+    {
+      w |= SIGN_MASK;
+      x = -x;
+    }
+  int exp;
+  double m = frexp(x, &exp);
+  word mm = (word) ldexp(m, 28);
+  if (exp > 63)
+    assert(0);
+  else if (exp < -63)
+    {
+      if (normalized || exp < -91)
+	mm=0, exp=0;
+      else
+	{
+	  mm >>= -exp - 63;
+	  exp = -63;
+	}
+    }
+  w |= mm << 8;
+  if (exp < 0)
+    {
+      w |= 0100;
+      exp = -exp;
+    }
+  w |= exp;
+  return w;
 }
 
 static word mem[4096];
@@ -171,7 +232,6 @@ static void parse_in(void)
 
 static word acc;
 static word r1, r2, current_ins;
-static int flag_zero = 0;
 static int ip = 00050;			// Standard program start location
 static int prev_ip;
 
@@ -185,12 +245,6 @@ static void stop(char *reason)
 static void over(void)
 {
   stop("OVERFLOW");
-}
-
-static void nofpu(void)
-{
-  acc = current_ins;
-  stop("NO FPU");
 }
 
 static void notimp(void)
@@ -407,7 +461,7 @@ static void run(void)
 
       word a, b, c;
       long long aa, bb, cc;
-      double ad, bd, cd;
+      double ad, bd;
       int i;
 
       auto void afetch(void);
@@ -428,6 +482,30 @@ static void run(void)
 	    wr(yi, acc);
 	}
 
+      auto void astore_int(long long x);
+      void astore_int(long long x)
+	{
+	  if (!int_in_range(x))
+	    over();
+	  astore(wfromll(x));
+	}
+
+      auto void astore_frac(double f);
+      void astore_frac(double f)
+	{
+	  if (!frac_in_range(f))
+	    over();
+	  astore(wfromfrac(f));
+	}
+
+      auto void astore_float(double f);
+      void astore_float(double f)
+	{
+	  if (!float_in_range(f))
+	    over();
+	  astore(wfromfloat(f, 0));
+	}
+
       if (ax)
 	op = -1;
       switch (op)
@@ -440,52 +518,52 @@ static void run(void)
 	  break;
 	case 010 ... 013:	// FIX addition
 	  afetch();
-	  cc = wtoll(a) + wtoll(b);
-	  if (!inrange(cc))
-	    over();
-	  astore(wfromll(cc));
+	  astore_int(wtoll(a) + wtoll(b));
 	  break;
 	case 014 ... 017:	// FP addition
-	  nofpu();
+	  afetch();
+	  astore_float(wtofloat(a) + wtofloat(b));
+	  break;
 	case 020 ... 023:	// FIX subtraction
 	  afetch();
-	  cc = wtoll(a) - wtoll(b);
-	  if (!inrange(cc))
-	    over();
-	  astore(wfromll(cc));
+	  astore_int(wtoll(a) - wtoll(b));
 	  break;
 	case 024 ... 027:	// FP subtraction
-	  nofpu();
+	  afetch();
+	  astore_float(wtofloat(a) - wtofloat(b));
+	  break;
 	case 030 ... 033:	// FIX multiplication
 	  afetch();
-	  // XXX: We ignore the rounding mode settings
-	  cd = wtofrac(a) * wtofrac(b);
-	  astore(wfromfrac(cd));
+	  astore_frac(wtofrac(a) * wtofrac(b));
 	  break;
 	case 034 ... 037:	// FP multiplication
-	  nofpu();
-	case 040 ... 043:	// division
+	  afetch();
+	  astore_float(wtofloat(a) * wtofloat(b));
+	  break;
+	case 040 ... 043:	// FIX division
 	  afetch();
 	  ad = wtofrac(a);
 	  bd = wtofrac(b);
 	  if (!wabs(b))
 	    stop("DIVISION BY ZERO");
-	  cd = ad / bd;
-	  if (!fracinrange(cd))
-	    over();
-	  astore(wfromfrac(cd));
+	  astore_frac(ad / bd);
 	  break;
 	case 044 ... 047:	// FP division
-	  nofpu();
+	  afetch();
+	  ad = wtofloat(a);
+	  bd = wtofloat(b);
+	  if (!bd)
+	    stop("DIVISION BY ZERO");
+	  astore_float(ad / bd);
+	  break;
 	case 050 ... 053:	// FIX subtraction of abs values
 	  afetch();
-	  cc = wabs(a) - wabs(b);
-	  if (!inrange(cc))
-	    over();
-	  astore(wfromll(cc));
+	  astore_int(wabs(a) - wabs(b));
 	  break;
 	case 054 ... 057:	// FP subtraction of abs values
-	  nofpu();
+	  afetch();
+	  astore_float(fabs(wtofloat(a)) - fabs(wtofloat(b)));
+	  break;
 	case 060 ... 063:	// Shift logical
 	  afetch();
 	  i = wexp(b);
@@ -548,7 +626,8 @@ static void run(void)
 	case 0115:		// Read code from R1 (obscure)
 	  notimp();
 	case 0116:		// Copy exponent
-	  nofpu();
+	  wr(yi, acc = wputexp(rd(yi), wexp(r1 = rd(xi))));
+	  break;
 	case 0117:		// I/O teletype
 	  notimp();
 	case 0120:		// Loop
@@ -584,7 +663,7 @@ static void run(void)
 	  ip = x;
 	  break;
 	case 0134:		// Jump if zero
-	  if (flag_zero)
+	  if (!wabs(r2))
 	    ip = y;
 	  else
 	    ip = x;
@@ -627,9 +706,23 @@ static void run(void)
 	  acc = wfromll(cc);
 	  break;
 	case 0172:		// Add exponents
-	  nofpu();
+	  a = r1 = rd(xi);
+	  b = rd(yi);
+	  i = wexp(a) + wexp(b);
+	  if (i < -63 || i > 63)
+	    over();
+	  acc = wputexp(b, i);
+	  wr(yi, acc);
+	  break;
 	case 0173:		// Sub exponents
-	  nofpu();
+	  a = r1 = rd(xi);
+	  b = rd(yi);
+	  i = wexp(b) - wexp(a);
+	  if (i < -63 || i > 63)
+	    over();
+	  acc = wputexp(b, i);
+	  wr(yi, acc);
+	  break;
 	case 0174:		// Addition in one's complement
 	  a = r1 = rd(xi);
 	  b = rd(yi);
@@ -641,7 +734,28 @@ static void run(void)
 	  acc = c;
 	  break;
 	case 0175:		// Normalization
-	  nofpu();
+	  a = r1 = rd(xi);
+	  if (!wabs(a))
+	    {
+	      wr(yi, 0);
+	      wr((yi+1) & 07777, 0);
+	      acc = 0;
+	    }
+	  else
+	    {
+	      i = 0;
+	      acc = a & SIGN_MASK;
+	      a &= VAL_MASK;
+	      while (!(a & (SIGN_MASK >> 1)))
+		{
+		  a <<= 1;
+		  i++;
+		}
+	      acc |= a;
+	      wr(yi, acc);
+	      wr((yi+1) & 07777, i);
+	    }
+	  break;
 	case 0176:		// Population count
 	  a = r1 = rd(xi);
 	  cc = 0;
@@ -656,9 +770,8 @@ static void run(void)
 	  noins();
 	}
 
-      flag_zero = !acc;
       if (trace > 1)
-	printf("\tACC:%c%012llo R1:%c%012llo R2:%c%012llo Z:%d\n", WF(acc), WF(r1), WF(r2), flag_zero);
+	printf("\tACC:%c%012llo R1:%c%012llo R2:%c%012llo\n", WF(acc), WF(r1), WF(r2));
     }
 }
 
