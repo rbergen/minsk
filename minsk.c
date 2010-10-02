@@ -200,7 +200,7 @@ static void parse_in(void)
 	      if (*c >= '0' && *c <= '7')
 		addr = 8*addr + *c++ - '0';
 	      else
-		parse_error("Плохая цифва");
+		parse_error("Плохая цифра");
 	    }
 	  while (*c == ' ')
 	    c++;
@@ -222,7 +222,7 @@ static void parse_in(void)
 	  if (*c >= '0' && *c <= '7')
 	    w = 8*w + *c++ - '0';
 	  else
-	    parse_error("Плохая цифва");
+	    parse_error("Плохая цифра");
 	}
       while (*c == ' ')
 	c++;
@@ -297,7 +297,7 @@ static void print_line(int r)
   if (r & 4)
     {
       if (print_quota > 0 && !--print_quota)
-	stop("Бумага дошла - нужно ехать в Сивирь про новую");
+	stop("Бумага дошла - нужно ехать в Сибирь про новую");
       for (int i=0; i<128; i++)
 	{
 	  int ch = linebuf[i];
