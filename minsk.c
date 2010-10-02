@@ -6,16 +6,18 @@
 
 /*
  * TODO:
- *	- error messages
  *	- debugging/play mode
  *	- we probably have to disable NOP
  */
 
 /*
  * Things that are not implemented:
+ *
  *	- rounding modes
  *	- exact behavior of accumulator/R1/R2 (the manual lacks details)
  *	- exact behavior of negative zero
+ *	- I/O instructions for devices that are not emulated (paper tape
+ *	  reader and puncher, card reader and puncher, magnetic tape unit)
  */
 
 #include <stdio.h>
@@ -238,26 +240,26 @@ static int prev_ip;
 
 static void stop(char *reason)
 {
-  printf("MACHINE STOPPED -- %s\n", reason);
-  printf("IP:%04o ACC:%c%012llo R1:%c%012llo R2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
+  printf("Машина остановлена -- %s\n", reason);
+  printf("СчАК:%04o См:%c%012llo Р1:%c%012llo Р2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
   exit(0);
 }
 
 static void over(void)
 {
-  stop("OVERFLOW");
+  stop("Аварийный останов");
 }
 
 static void notimp(void)
 {
   acc = current_ins;
-  stop("NOT IMPLEMENTED");
+  stop("Устройство разбитое");
 }
 
 static void noins(void)
 {
   acc = current_ins;
-  stop("ILLEGAL INSTRUCTION");
+  stop("Эту команду не знаю");
 }
 
 static uint16_t linebuf[128];
@@ -295,7 +297,7 @@ static void print_line(int r)
   if (r & 4)
     {
       if (print_quota > 0 && !--print_quota)
-	stop("OUT OF PAPER");
+	stop("Бумага дошла - нужно ехать в Сивирь про новую");
       for (int i=0; i<128; i++)
 	{
 	  int ch = linebuf[i];
@@ -461,7 +463,7 @@ static void run(void)
       ip = (ip+1) & 07777;
 
       if (cpu_quota > 0 && !--cpu_quota)
-	stop("TIMED OUT");
+	stop("Тайм-аут");
 
       /* Arithmetic operations */
 
@@ -551,15 +553,15 @@ static void run(void)
 	  ad = wtofrac(a);
 	  bd = wtofrac(b);
 	  if (!wabs(b))
-	    stop("DIVISION BY ZERO");
+	    over();
 	  astore_frac(ad / bd);
 	  break;
 	case 044 ... 047:	// FP division
 	  afetch();
 	  ad = wtofloat(a);
 	  bd = wtofloat(b);
-	  if (!bd)
-	    stop("DIVISION BY ZERO");
+	  if (!bd || wexp(b) < -63)
+	    over();
 	  astore_float(ad / bd);
 	  break;
 	case 050 ... 053:	// FIX subtraction of abs values
@@ -604,7 +606,7 @@ static void run(void)
 	case 0100:		// Halt
 	  r1 = rd(x);
 	  acc = rd(y);
-	  stop("HALTED");
+	  stop("Останов машины");
 	case 0103:		// I/O magtape
 	  notimp();
 	case 0104:		// Disable rounding
@@ -705,7 +707,7 @@ static void run(void)
 	  aa = wabs(a);
 	  bb = wabs(b);
 	  if (!bb)
-	    stop("DIVISION BY ZERO");
+	    over();
 	  cc = aa % bb;
 	  if (wsign(b) < 0)
 	    cc = -cc;
