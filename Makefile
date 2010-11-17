@@ -6,3 +6,4 @@ all: minsk
 
 clean:
 	rm -f `find . -name "*~" -or -name "*.[oa]" -or -name core -or -name .depend -or -name .#*`
+	rm -f minsk
