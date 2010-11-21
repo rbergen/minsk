@@ -1,0 +1,132 @@
+MINSK-2 INSTRUCTION SET
+~~~~~~~~~~~~~~~~~~~~~~~
+Data format:
+
+	The memory of the machine consists of 4096 37-bit words (the topmost bit
+	is always used as a sign). The 0th memory cell is hard-wired to 0, writes
+	have no effect.
+
+	Fixed-point numbers: sign and 36 significant bits
+
+	Binary floating-point numbers (from top to bottom bit):
+
+		sign of mantissa
+		28 bits of mantissa
+		1 bit unused
+		sign of exponent
+		6 bits of exponent
+
+	Decimal floating-point numbers (used only for printing):
+
+		sign of mantissa
+		28 bits of mantissa (7 decimal digits in BCD)
+		1 bit unused
+		sign of exponent
+		1 bit unused
+		5 bits of exponent (2 decimal digits in BCD, the former one truncated to 1 bit)
+
+
+Generic instruction format:  (by octal digits; some instructions deviate)
+
+sop mm xxxx yyyy
+ |   |   |    |
+ |   |   |    +--- operand2
+ |   |   +----- operand1
+ |   +------ indexing mode
+ +------- signed operation code
+
+
+Indexing mode bits:
+
+  aa iiii
+   |   |
+   |   +---- index register: when non-zero, lower 12 bits of the memory
+   |         cell #iiii are added to yyyy, next 12 bits are added to xxxx
+   +----- address extension (supported only on Minsk-22, not in our Minsk-2)
+
+
+For arithmetic instructions, the lower 2 bits of <sop> encode addressing mode:
+
+	0?: arg_a = previous value of accumulator, arg_b = mem[x]
+	1?: arg_a = mem[y], arg_b = mem[x]
+	?0: store result to accumulator
+	?1: store result to both accumulator and mem[y]
+
+
+Instructions:
+
++00		NOP
++04-07		a^b
++10-13		Fixed-point a+b
++14-17		Floating-point a+b
++20-23		Fixed-point a-b
++24-27		Floating-point a-b
++30-33		Fixed-point a*b
++34-37		Floating-point a*b
++40-43		Fixed-point a/b
++44-47		Floating-point a/b
++50-53		Fixed-point abs(a)-abs(b)
++54-57		Floating-point abs(a)-abs(b)
++60-63		a << b  (b may be negative)
++64-67		a << b  (b may be negative)
++70-73		a&b
++74-77		a|b
+-00		HALT, store x to R1 and y to accumulator
+-03		Magnetic tape I/O -- NOTIMP
+-04		Disable rounding -- NOTIMP
+-05		Enable rounding -- NOTIMP
+-06		Interrupt control -- NOTIMP
+-07		Reverse tape -- NOTIMP
+-10		Move: mem[y] = acc = mem[x]
+-11		Move negative: mem[y] = acc = -mem[x]
+-12		Move absolute: mem[y] = acc = abs(mem[x])
+-13		Read from keyboard -- NOTIMP
+-14		Copy sign of mem[x] to mem[y]
+-15		Read code from R1 (obscure) -- NOTIMP
+-16		Copy exponent of mem[x] to mem[y]
+-17		Teletype I/O -- NOTIMP
+-20		Loop: uses the index register mem[i] for loop control:
+		mem[i] is divided to 3 12-bit fields nnnn pppp qqqq,
+		mem[y] is likewise diveded to fields rrrr ssss tttt.
+		If n=0, the instruction does nothing
+		otherwise, mem[i] is written back with:
+			n' = n-1
+			p' = p+s mod 4096
+			q' = q+t mod 4096
+		and jump to address x.
+-30		Jump: mem[y]=acc and jump to address x
+-31		Jump to subroutine at address x, store backward jump instruction to mem[y]
+-32		Jump by sign: if acc>=0, jump to x, else jump to y
+-33		Jump by overflow: if overflow, jump to y, else jump to x
+		(we always halt on overflow, so this is rather trivial)
+-34		Jump by zero: if acc==0, jump to y, else jump to x
+-35		Jump by keypress: if key pressed, jump to x, else jump to y
+		(no keys are emulated)
+-36		Interrupt masking -- NOTIMP
+-37		Tape I/O -- NOTIMP
+-40-47		Various I/O -- NOTIMP
+-60-61		Various I/O -- NOTIMP
+-62		Printing instructions, depending on x:
+			0aaa	put decimal float mem[y] at position aaa in the buffer
+			1aaa	put octal integer mem[y]
+			2aaa	put decimal integer mem[y]
+			3aaa	put decimal integer mem[y], leading zeroes changed to spaces
+			4aaa	put one Russian symbol stored in 6 topmost bits of mem[y]
+			5aaa	put Russian text in mem[y] (6 6-bit characters)
+			6aaa	put one Latin symbol stored in 6 topmost bits of mem[y]
+			7aaa	put Latin text in mem[y] (6 6-bit characters)
+			z400	print contents of the buffer
+					bit 0 of z: perform line feed afterwards
+					bit 1 of z: clear buffer afterwards
+					bit 2 of z: if 0, nothing is printed
+				Hence, 2400 just clears the buffer, 5400 is a linefeed with
+				no effect on the contents of the buffer etc.
+-63		I/O -- NOTIMP
+-70		Fixed-point a*b, take bottom part; result always to acc
+		(what is the sign? the book is silent...)
+-71		acc = a%b
+-72		Add exponent of mem[x] to mem[y], copy mem[y] to acc
+-73		Sub exponent of mem[x] from mem[y], copy mem[y] to acc
+-74		Addition in one's complement: mem[y] = mem[x] + mem[y]
+-75		Normalization: convert fixed-point mem[x] to floating-point mem[y]
+-76		Population count: set mem[y] to number of bits in mem[x]
