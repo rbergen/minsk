@@ -26,6 +26,17 @@ Data format:
 		5 bits of exponent (2 decimal digits in BCD, the former one truncated to 1 bit)
 
 
+Registers:
+
+Minsk-2 has 3 registers:
+
+	accumulator	usually keeps the result of the previous arithmetic operation
+	R1		usually copies one of the operand of the instruction
+	R2		contains the value of acc
+
+(most programs use only the accumulator)
+
+
 Generic instruction format:  (by octal digits; some instructions deviate)
 
 sop mm xxxx yyyy
