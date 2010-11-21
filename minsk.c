@@ -193,7 +193,16 @@ static void parse_in(void)
 
       char *c = line;
       if (!c[0] || c[0] == ';')
-	continue;
+	{
+	  if (!strncmp(c, ";daji_zor_i_litva=", 18))
+	    {
+	      trace = atoi(c+18);
+	      if (error_hook)
+		error_hook("Secret tracing switch flipped");
+	    }
+	  continue;
+	}
+
       if (c[0] == '@')
 	{
 	  c++;
