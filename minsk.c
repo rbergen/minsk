@@ -5,11 +5,6 @@
  */
 
 /*
- * TODO:
- *	- we probably have to disable NOP
- */
-
-/*
  * Things that are not implemented:
  *
  *	- rounding modes
@@ -1232,8 +1227,25 @@ static void run_as_daemon(int do_fork)
     }
 }
 
+static void init_memory(void)
+{
+  // For the contest, we fill the whole memory with -00 00 0000 0000 (HALT),
+  // not +00 00 0000 0000 (NOP). Otherwise, an empty program would reveal
+  // the location of the password :)
+  for (int i=0; i<4096; i++)
+    mem[i] = 01000000000000ULL;
+
+  // Store the password
+  int pos = 02655;
+  mem[pos++] = 0574060565373;
+  mem[pos++] = 0371741405340;
+  mem[pos++] = 0534051524017;
+}
+
 int main(int argc, char **argv)
 {
+  init_memory();
+
   if (argc > 1)
     {
       setproctitle_init(argc, argv);
