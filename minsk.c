@@ -6,7 +6,6 @@
 
 /*
  * TODO:
- *	- debugging/play mode
  *	- we probably have to disable NOP
  */
 
@@ -20,16 +19,20 @@
  *	  reader and puncher, card reader and puncher, magnetic tape unit)
  */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <inttypes.h>
 #include <assert.h>
 #include <math.h>
 
-static int trace = 3;
+static int trace;
 static int cpu_quota = -1;
 static int print_quota = -1;
+static void (*error_hook)(char *msg);
 
 // Minsk-2 has 37-bit words in sign-magnitude representation (bit 36 = sign)
 typedef unsigned long long int word;
@@ -169,8 +172,10 @@ static int lino;
 
 static void parse_error(char *msg)
 {
+  if (error_hook)
+    error_hook("Parse error");
   printf("Ошибка входа (стр. %d): %s\n", lino, msg);
-  exit(1);
+  exit(0);
 }
 
 static void parse_in(void)
@@ -238,8 +243,10 @@ static word r1, r2, current_ins;
 static int ip = 00050;			// Standard program start location
 static int prev_ip;
 
-static void stop(char *reason)
+static void stop(char *reason, char *notice)
 {
+  if (error_hook)
+    error_hook(notice);
   printf("Машина остановлена -- %s\n", reason);
   printf("СчАК:%04o См:%c%012llo Р1:%c%012llo Р2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
   exit(0);
@@ -247,19 +254,19 @@ static void stop(char *reason)
 
 static void over(void)
 {
-  stop("Аварийный останов");
+  stop("Аварийный останов", "Overflow");
 }
 
 static void notimp(void)
 {
   acc = current_ins;
-  stop("Устройство разбитое");
+  stop("Устройство разбитое", "Not implemented");
 }
 
 static void noins(void)
 {
   acc = current_ins;
-  stop("Эту команду не знаю");
+  stop("Эту команду не знаю", "Illegal instruction");
 }
 
 static uint16_t linebuf[128];
@@ -297,7 +304,7 @@ static void print_line(int r)
   if (r & 4)
     {
       if (print_quota > 0 && !--print_quota)
-	stop("Бумага дошла - нужно ехать в Сибирь про новую");
+	stop("Бумага дошла - нужно ехать в Сибирь про новую", "Out of paper");
       for (int i=0; i<128; i++)
 	{
 	  int ch = linebuf[i];
@@ -463,7 +470,7 @@ static void run(void)
       ip = (ip+1) & 07777;
 
       if (cpu_quota > 0 && !--cpu_quota)
-	stop("Тайм-аут");
+	stop("Тайм-аут", "CPU quota exceeded");
 
       /* Arithmetic operations */
 
@@ -606,7 +613,7 @@ static void run(void)
 	case 0100:		// Halt
 	  r1 = rd(x);
 	  acc = rd(y);
-	  stop("Останов машины");
+	  stop("Останов машины", "Halted");
 	case 0103:		// I/O magtape
 	  notimp();
 	case 0104:		// Disable rounding
@@ -783,8 +790,453 @@ static void run(void)
     }
 }
 
-int main(void)
+/*** Daemon interface ***/
+
+#include <unistd.h>
+#include <errno.h>
+#include <time.h>
+#include <syslog.h>
+#include <sys/signal.h>
+#include <sys/wait.h>
+#include <sys/poll.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#if 0
+#define DTRACE(msg, args...) fprintf(stderr, msg "\n", ##args)
+#define DLOG(msg, args...) fprintf(stderr, msg "\n", ##args)
+#else
+#define DTRACE(msg, args...) do { } while(0)
+#define DLOG(msg, args...) syslog(LOG_INFO, msg, ##args)
+#endif
+
+#define MAX_CONNECTIONS 50		// Per daemon
+#define MAX_CONNS_PER_IP 1		// Per IP
+#define MAX_TRACKERS 200		// IP address trackers
+#define TBF_MAX 5			// Max number of tokens in the bucket
+#define TBF_REFILL_PER_SEC 0.2		// Bucket refill rate (buckets/sec)
+
+#define PID_FILE "/var/run/minsk.pid"
+#define UID 65534
+#define GID 65534
+
+static void die(char *msg)
 {
+  fprintf(stderr, "minsk: ");
+  fprintf(stderr, msg);
+  fputc('\n', stderr);
+  exit(1);
+}
+
+static char **spt_argv;
+static char *spt_start, *spt_end;
+
+static void setproctitle_init(int argc, char **argv)
+{
+  int i, len;
+  char **env, **oldenv, *t;
+
+  spt_argv = argv;
+
+  /* Create a backup copy of environment */
+  oldenv = __environ;
+  len = 0;
+  for (i=0; oldenv[i]; i++)
+    len += strlen(oldenv[i]) + 1;
+  __environ = env = malloc(sizeof(char *)*(i+1));
+  t = malloc(len);
+  if (!__environ || !t)
+    die("malloc failed");
+  for (i=0; oldenv[i]; i++)
+    {
+      env[i] = t;
+      len = strlen(oldenv[i]) + 1;
+      memcpy(t, oldenv[i], len);
+      t += len;
+    }
+  env[i] = NULL;
+
+  /* Scan for consecutive free space */
+  spt_start = spt_end = argv[0];
+  for (i=0; i<argc; i++)
+    if (!i || spt_end+1 == argv[i])
+      spt_end = argv[i] + strlen(argv[i]);
+  for (i=0; oldenv[i]; i++)
+    if (spt_end+1 == oldenv[i])
+      spt_end = oldenv[i] + strlen(oldenv[i]);
+}
+
+static void
+setproctitle(const char *msg, ...)
+{
+  va_list args;
+  char buf[256];
+  int n;
+
+  va_start(args, msg);
+  if (spt_end > spt_start)
+    {
+      n = vsnprintf(buf, sizeof(buf), msg, args);
+      if (n >= (int) sizeof(buf) || n < 0)
+	sprintf(buf, "<too-long>");
+      n = spt_end - spt_start;
+      strncpy(spt_start, buf, n);
+      spt_start[n] = 0;
+      spt_argv[0] = spt_start;
+      spt_argv[1] = NULL;
+    }
+  va_end(args);
+}
+
+static void sigchld_handler(int sig __attribute__((unused)))
+{
+}
+
+static void sigalrm_handler(int sig __attribute__((unused)))
+{
+  const char err[] = "--- Timed out. Time machine disconnected. ---\n";
+  write(1, err, sizeof(err));
+  DLOG("Connection timed out");
+  exit(0);
+}
+
+static void child_error_hook(char *err)
+{
+  DLOG("Stopped: %s", err);
+}
+
+static void child(int sk2)
+{
+  dup2(sk2, 0);
+  dup2(sk2, 1);
+  close(sk2);
+
+  struct sigaction sact = {
+    .sa_handler = sigalrm_handler,
+  };
+  if (sigaction(SIGALRM, &sact, NULL) < 0)
+    die("sigaction: %m");
+
+  // Set up limits
+  alarm(60);
+  cpu_quota = 100000;
+  print_quota = 100;
+
+  const char welcome[] = "+++ Welcome to our computer museum. +++\n+++ Our time machine will connect you to one of our exhibits. +++\n\n";
+  write(1, welcome, sizeof(welcome));
+
+  error_hook = child_error_hook;
+  parse_in();
+  run();
+  fflush(stdout);
+  DTRACE("Finished");
+}
+
+struct conn {
+  pid_t pid;
+  struct in_addr addr;
+  struct tracker *tracker;
+};
+
+static struct conn connections[MAX_CONNECTIONS];
+
+static struct conn *get_conn(struct in_addr *a)
+{
+  for (int i=0; i<MAX_CONNECTIONS; i++)
+    {
+      struct conn *c = &connections[i];
+      if (!c->pid)
+	{
+	  memcpy(&c->addr, a, sizeof(struct in_addr));
+	  return c;
+	}
+    }
+  return NULL;
+}
+
+static struct conn *pid_to_conn(pid_t pid)
+{
+  for (int i=0; i<MAX_CONNECTIONS; i++)
+    {
+      struct conn *c = &connections[i];
+      if (c->pid == pid)
+	return c;
+    }
+  return NULL;
+}
+
+static void put_conn(struct conn *c)
+{
+  c->pid = 0;
+  c->tracker = NULL;
+}
+
+struct tracker {
+  struct in_addr addr;
+  int active_conns;
+  time_t last_access;
+  double tokens;
+};
+
+static struct tracker trackers[MAX_TRACKERS];
+
+static int get_tracker(struct conn *c)
+{
+  struct tracker *t;
+  time_t now = time(NULL);
+  int i;
+
+  for (i=0; i<MAX_TRACKERS; i++)
+    {
+      t = &trackers[i];
+      if (!memcmp(&t->addr, &c->addr, sizeof(struct in_addr)))
+	break;
+    }
+  if (i < MAX_TRACKERS)
+    {
+      if (now > t->last_access)
+	{
+	  t->tokens += (now - t->last_access) * (double) TBF_REFILL_PER_SEC;
+	  t->last_access = now;
+	  if (t->tokens > TBF_MAX)
+	    t->tokens = TBF_MAX;
+	}
+      DTRACE("TBF: Using tracker %d (%.3f tokens)", i, t->tokens);
+    }
+  else
+    {
+      int min_i = -1;
+      for (int i=0; i<MAX_TRACKERS; i++)
+	{
+	  t = &trackers[i];
+	  if (!t->active_conns && (min_i < 0 || t->last_access < trackers[min_i].last_access))
+	    min_i = i;
+	}
+      if (min_i < 0)
+	{
+	  DLOG("TBF: Out of trackers!");
+	  return 0;
+	}
+      t = &trackers[min_i];
+      if (t->last_access)
+	DTRACE("TBF: Recycling tracker %d", min_i);
+      else
+	DTRACE("TBF: Creating tracker %d", min_i);
+      memset(t, 0, sizeof(*t));
+      t->addr = c->addr;
+      t->last_access = now;
+      t->tokens = TBF_MAX;
+    }
+
+  if (t->active_conns >= MAX_CONNS_PER_IP)
+    {
+      DTRACE("TBF: Too many conns per IP");
+      return 0;
+    }
+
+  if (t->tokens >= 0.999)
+    {
+      t->tokens -= 1;
+      t->active_conns++;
+      c->tracker = t;
+      DTRACE("TBF: Passed (%d conns)", t->active_conns);
+      return 1;
+    }
+  else
+    {
+      DTRACE("TBF: Failed");
+      t->tokens = 0;
+      return 0;
+    }
+}
+
+static void put_tracker(struct conn *c)
+{
+  struct tracker *t = c->tracker;
+  if (!t)
+    {
+      DLOG("put_tracker: no tracker?");
+      sleep(5);
+      return;
+    }
+  if (t->active_conns <= 0)
+    {
+      DLOG("put_tracker: no counter?");
+      sleep(5);
+      return;
+    }
+  t->active_conns--;
+  DTRACE("TBF: Put tracker (%d conns remain)", t->active_conns);
+}
+
+static void run_as_daemon(int do_fork)
+{
+  int sk = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (sk < 0)
+    die("socket: %m");
+
+  int one = 1;
+  if (setsockopt(sk, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)) < 0)
+    die("setsockopt: %m");
+
+  struct sockaddr_in sa = {
+    .sin_family = AF_INET,
+    .sin_port = ntohs(1969),
+    .sin_addr.s_addr = INADDR_ANY,
+  };
+  if (bind(sk, (struct sockaddr *) &sa, sizeof(sa)) < 0)
+    die("bind: %m");
+  if (listen(sk, 128) < 0)
+    die("listen: %m");
+  // if (fcntl(sk, F_SETFL, O_NONBLOCK) < 0)
+  //  die("fcntl: %m");
+
+  if (do_fork)
+    {
+      pid_t pid = fork();
+      if (pid < 0)
+	die("fork: %m");
+      if (pid)
+	{
+	  FILE *f = fopen(PID_FILE, "w");
+	  if (f)
+	    {
+	      fprintf(f, "%d\n", pid);
+	      fclose(f);
+	    }
+	  exit(0);
+	}
+
+      chdir("/");
+      setresgid(GID, GID, GID);
+      setresuid(UID, UID, UID);
+      setsid();
+    }
+
+  struct sigaction sact = {
+    .sa_handler = sigchld_handler,
+    .sa_flags = SA_RESTART,
+  };
+  if (sigaction(SIGCHLD, &sact, NULL) < 0)
+    die("sigaction: %m");
+
+  DLOG("Daemon ready");
+  setproctitle("minsk: Listening");
+  openlog("minsk", LOG_PID, LOG_LOCAL7);
+
+  for (;;)
+    {
+      struct pollfd pfd[1] = {
+	{ .fd = sk, .events = POLLIN },
+      };
+
+      int nfds = poll(pfd, 1, 60000);
+      if (nfds < 0 && errno != EINTR)
+	{
+	  DLOG("poll: %m");
+	  sleep(5);
+	  continue;
+	}
+
+      int status;
+      pid_t pid;
+      while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+	{
+	  if (!WIFEXITED(status) || WEXITSTATUS(status))
+	    DLOG("Process %d exited with strange status %x", pid, status);
+
+	  struct conn *conn = pid_to_conn(pid);
+	  if (conn)
+	    {
+	      DTRACE("Connection with PID %d exited", pid);
+	      put_tracker(conn);
+	      put_conn(conn);
+	    }
+	  else
+	    DTRACE("PID %d exited, matching no connection", pid);
+	}
+
+      if (!(pfd[0].revents & POLLIN))
+	continue;
+
+      socklen_t salen = sizeof(sa);
+      int sk2 = accept(sk, (struct sockaddr *) &sa, &salen);
+      if (sk2 < 0)
+	{
+	  if (errno != EINTR)
+	    {
+	      DLOG("accept: %m");
+	      sleep(5);
+	    }
+	  continue;
+	}
+      DTRACE("Got connection: fd=%d", sk2);
+
+      struct conn *conn = get_conn(&sa.sin_addr);
+      const char *reason = NULL;
+      if (conn)
+	{
+	  if (!get_tracker(conn))
+	    {
+	      DLOG("Connection from %s dropped: Throttling", inet_ntoa(sa.sin_addr));
+	      put_conn(conn);
+	      conn = NULL;
+	      reason = "--- Sorry, but you are sending too many requests. Please slow down. ---\n";
+	    }
+	}
+      else
+	{
+	  DLOG("Connection from %s dropped: Too many connections", inet_ntoa(sa.sin_addr));
+	  reason = "--- Sorry, maximum number of connections exceeded. Please come later. ---\n";
+	}
+
+      pid = fork();
+      if (pid < 0)
+	{
+	  DLOG("fork failed: %m");
+	  close(sk2);
+	  continue;
+	}
+      if (!pid)
+	{
+	  close(sk);
+	  if (conn)
+	    {
+	      DLOG("Accepted connection from %s", inet_ntoa(sa.sin_addr));
+	      setproctitle("minsk: %s", inet_ntoa(sa.sin_addr));
+	      child(sk2);
+	    }
+	  else
+	    {
+	      DLOG("Sending error message to %s", inet_ntoa(sa.sin_addr));
+	      setproctitle("minsk: %s ERR", inet_ntoa(sa.sin_addr));
+	      write(sk2, reason, strlen(reason));
+	    }
+	  exit(0);
+	}
+
+      DTRACE("Created process %d", pid);
+      if (conn)
+	conn->pid = pid;
+      close(sk2);
+    }
+}
+
+int main(int argc, char **argv)
+{
+  if (argc > 1)
+    {
+      setproctitle_init(argc, argv);
+      if (!strcmp(argv[1], "--daemon"))
+	run_as_daemon(1);
+      else if (!strcmp(argv[1], "--net"))
+	run_as_daemon(0);
+      else
+	die("Usage: minsk [--daemon | --net]");
+    }
+
+  trace = 3;
   parse_in();
   run();
   return 0;
