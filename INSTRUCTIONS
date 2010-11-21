@@ -58,8 +58,8 @@ Indexing mode bits:
 
 For arithmetic instructions, the lower 2 bits of <sop> encode addressing mode:
 
-	0?: arg_a = previous value of accumulator, arg_b = mem[x]
-	1?: arg_a = mem[y], arg_b = mem[x]
+	0?: arg_a = mem[y], arg_b = mem[x]
+	1?: arg_a = previous value of accumulator, arg_b = mem[x]
 	?0: store result to accumulator
 	?1: store result to both accumulator and mem[y]
 
