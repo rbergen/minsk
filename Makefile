@@ -4,13 +4,13 @@ CFLAGS=-O2 -Wall -W -Wno-parentheses -Wstrict-prototypes -Wmissing-prototypes -W
 
 all: minsk
 
-examples:
-	rm -rf examples
-	mkdir examples
-	cp ex-* examples/
-	tar czvvf examples.tar.gz examples
-	rm -rf examples
+museum:
+	rm -rf museum
+	mkdir museum
+	cp ex-* museum/
+	tar czvvf museum.tar.gz museum
+	rm -rf museum
 
 clean:
 	rm -f `find . -name "*~" -or -name "*.[oa]" -or -name core -or -name .depend -or -name .#*`
-	rm -f minsk
+	rm -f minsk museum.tar.gz
