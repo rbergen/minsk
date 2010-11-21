@@ -369,15 +369,13 @@ static void print_ins(int x, int y)
       eat = 1;
       break;
     case 4:				// One Russian symbol
-      bit = 6;
-      fmt = "r";
+      fmt = "xr";
       break;
     case 5:				// Russian text
       fmt = "xrrrrrr";
       break;
     case 6:				// One Latin symbol
-      bit = 6;
-      fmt = "l";
+      fmt = "xl";
       break;
     default:				// Latin text
       fmt = "xllllll";
@@ -434,7 +432,7 @@ static void print_ins(int x, int y)
       linebuf[pos] = ch;
       pos = (pos+1) & 0177;
     }
-  assert(!bit);
+  assert(bit >= 0);
 }
 
 static void run(void)
@@ -1253,11 +1251,12 @@ int main(int argc, char **argv)
 	run_as_daemon(1);
       else if (!strcmp(argv[1], "--net"))
 	run_as_daemon(0);
+      else if (!strncmp(argv[1], "--trace=", 8))
+	trace = atoi(argv[1] + 8);
       else
 	die("Usage: minsk [--daemon | --net]");
     }
 
-  trace = 3;
   parse_in();
   run();
   return 0;
