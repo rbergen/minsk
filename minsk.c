@@ -198,6 +198,9 @@ static void parse_in(void)
 	  continue;
 	}
 
+      if (c[0] == '.')
+	return;
+
       if (c[0] == '@')
 	{
 	  c++;
