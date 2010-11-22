@@ -819,9 +819,9 @@ static void run(void)
 #define TBF_MAX 5			// Max number of tokens in the bucket
 #define TBF_REFILL_PER_SEC 0.2		// Bucket refill rate (buckets/sec)
 
-#define PID_FILE "/var/run/minsk.pid"
-#define UID 65534
-#define GID 65534
+#define PID_FILE "/var/run/pd-minsk.pid"
+#define UID 124
+#define GID 125
 
 static void die(char *msg)
 {
