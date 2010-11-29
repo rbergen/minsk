@@ -185,6 +185,8 @@ static void parse_in(void)
       if (!eol)
 	parse_error("Строка слишком долгая");
       *eol = 0;
+      if (eol > line && eol[-1] == '\r')
+	*--eol = 0;
 
       char *c = line;
       if (!c[0] || c[0] == ';')
