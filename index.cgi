@@ -77,9 +77,3 @@ print <<EOF ;
 <p>Written by <a href='http://mj.ucw.cz/'>Martin Mareš</a>. Version 1.0 (2010-12-27).
 </body></html>
 EOF
-
-# FIXME:
-# - password
-# - utf-8 warning
-# - nice
-# - .htaccess
