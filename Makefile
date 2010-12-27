@@ -7,7 +7,7 @@ CFLAGS=-O2 -Wall -W -Wno-parentheses -Wstrict-prototypes -Wmissing-prototypes -W
 
 all: minsk
 
-web:
+web: minsk
 	rsync -avzP . jw:www/minsk/ --exclude=.git --exclude=.*.swp --delete
 
 release:
