@@ -15,6 +15,9 @@
  */
 
 #define _GNU_SOURCE
+#define UNUSED __attribute__((unused))
+
+#undef ENABLE_DAEMON_MODE
 
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +26,7 @@
 #include <inttypes.h>
 #include <assert.h>
 #include <math.h>
+#include <getopt.h>
 
 static int trace;
 static int cpu_quota = -1;
@@ -797,7 +801,22 @@ static void run(void)
     }
 }
 
+static void die(char *msg)
+{
+  fprintf(stderr, "minsk: ");
+  fprintf(stderr, msg);
+  fputc('\n', stderr);
+  exit(1);
+}
+
 /*** Daemon interface ***/
+
+#ifdef ENABLE_DAEMON_MODE
+
+/*
+ * The daemon mode was a quick hack for the Po drate contest.
+ * Most parameters are hard-wired.
+ */
 
 #include <unistd.h>
 #include <errno.h>
@@ -827,14 +846,6 @@ static void run(void)
 #define PID_FILE "/var/run/pd-minsk.pid"
 #define UID 124
 #define GID 125
-
-static void die(char *msg)
-{
-  fprintf(stderr, "minsk: ");
-  fprintf(stderr, msg);
-  fputc('\n', stderr);
-  exit(1);
-}
 
 static char **spt_argv;
 static char *spt_start, *spt_end;
@@ -896,11 +907,11 @@ setproctitle(const char *msg, ...)
   va_end(args);
 }
 
-static void sigchld_handler(int sig __attribute__((unused)))
+static void sigchld_handler(int sig UNUSED)
 {
 }
 
-static void sigalrm_handler(int sig __attribute__((unused)))
+static void sigalrm_handler(int sig UNUSED)
 {
   const char err[] = "--- Timed out. Time machine disconnected. ---\n";
   write(1, err, sizeof(err));
@@ -1230,6 +1241,19 @@ static void run_as_daemon(int do_fork)
     }
 }
 
+#else
+
+static void run_as_daemon(int do_fork UNUSED)
+{
+  die("Daemon mode not supported in this version, need to recompile.");
+}
+
+static void setproctitle_init(int argc UNUSED, char **argv UNUSED)
+{
+}
+
+#endif
+
 static void init_memory(void)
 {
   // For the contest, we fill the whole memory with -00 00 0000 0000 (HALT),
@@ -1245,22 +1269,63 @@ static void init_memory(void)
   mem[pos++] = 0534051524017;
 }
 
+static const struct option longopts[] = {
+  { "cpu-quota",	1, NULL, 'q' },
+  { "daemon",		0, NULL, 'd' },
+  { "nofork",		0, NULL, 'n' },
+  { "print-quota",	1, NULL, 'p' },
+  { "trace",		1, NULL, 't' },
+  { NULL,		0, NULL, 0   },
+};
+
+static void usage(void)
+{
+  fprintf(stderr, "\
+Options:\n\n\
+--daemon		Run as daemon and listen for network connections\n\
+--nofork		When run with --daemon, avoid forking\n\
+--trace=<level>		Enable tracing of program execution\n\
+--cpu-quota=<n>		Set CPU quota to <n> instructions\n\
+--print-quota=<n>	Set printer quota to <n> lines\n\
+");
+  exit(1);
+}
+
 int main(int argc, char **argv)
 {
+  int opt;
+  int daemon_mode = 0;
+  int do_fork = 1;
+
+  while ((opt = getopt_long(argc, argv, "", longopts, NULL)) >= 0)
+    switch (opt)
+      {
+      case 'd':
+	daemon_mode = 1;
+	break;
+      case 'n':
+	do_fork = 0;
+	break;
+      case 'p':
+	print_quota = atoi(optarg);
+	break;
+      case 'q':
+	cpu_quota = atoi(optarg);
+	break;
+      case 't':
+	trace = atoi(optarg);
+	break;
+      default:
+	usage();
+      }
+  if (optind < argc)
+    usage();
+
+  setproctitle_init(argc, argv);
   init_memory();
 
-  if (argc > 1)
-    {
-      setproctitle_init(argc, argv);
-      if (!strcmp(argv[1], "--daemon"))
-	run_as_daemon(1);
-      else if (!strcmp(argv[1], "--net"))
-	run_as_daemon(0);
-      else if (!strncmp(argv[1], "--trace=", 8))
-	trace = atoi(argv[1] + 8);
-      else
-	die("Usage: minsk [--daemon | --net]");
-    }
+  if (daemon_mode)
+    run_as_daemon(do_fork);
 
   parse_in();
   run();
