@@ -1,0 +1,56 @@
+BODY {
+  background-color: #ffffff;
+}
+
+TEXTAREA {
+  border-top:       1px solid #11308a;
+  border-left:      1px solid #11308a;
+  border-bottom:    1px dotted #8396cd;
+  border-right:     1px dotted #8396cd;
+  padding:          0.5ex;
+}
+
+#output {
+  border-top:       1px solid #11308a;
+  border-left:      1px solid #11308a;
+  border-bottom:    1px dotted #8396cd;
+  border-right:     1px dotted #8396cd;
+  padding:          0.5ex;
+}
+
+H1 {
+  color:            #11308a;
+  font-size:        1.6em;
+  text-align:       center;
+}
+
+H2 {
+  color:            #11308a;
+  font-size:        1.4em;
+}
+
+A:link {
+  color:            #0000f0;
+}
+
+A:active {
+  color:            #454589;
+}
+
+A:visited { 
+  color:            #00005a;
+}
+
+A:hover {
+  color:            #8900b8;
+}
+
+HR {
+  border:           1px dotted #11308a;
+  margin-top:       1cm;
+  height:           1px;
+}
+
+#top {
+  text-align:       center;
+}

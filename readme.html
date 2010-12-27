@@ -1,0 +1,108 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html40/strict.dtd">
+<html><head>
+<title>Minsk-2 Emulator</title>
+<link rel=stylesheet title=Default href="minsk.css" type="text/css" media=all>
+</head><body>
+<h1>Minsk-2 Emulator</h1>
+
+<p id=top>(see it <a href='.'>in action</a>)
+
+<h2>Introduction</h2>
+
+<p>This is an emulator of Минск-2 (Minsk-2) &ndash; a mainframe computer from
+the Soviet era, produced around 1963 in the Byelorussian SSR.
+
+<p>We have written the emulator for a task in the <a href='http://www.podrate.cz/'>Po drátě</a>
+hacking contest (sorry, the page is in Czech only). The participants were to
+find a password hidden in the machine's memory, which involved figuring out how
+the machine works and reconstructing at least a part of its instruction set.
+You can try your luck, the password is still there.
+
+<p>Online resources about this machine are rather scarce. English Wikipedia contains
+a fairly short article on the <a href='http://en.wikipedia.org/wiki/Minsk_family_of_computers'>Minsk
+family of computers</a>, Russian Wikipedia reveals a couple of technical details on
+<a href='http://ru.wikipedia.org/wiki/%D0%9C%D0%B8%D0%BD%D1%81%D0%BA-22'>Minsk-22</a>,
+which is essentially Minsk-2 with extra memory. The Russian Virtual Computer Museum
+tells the <a href='http://www.computer-museum.ru/english/minsk0.htm'>history of the
+Minsk family</a> in its full glory, but it lacks details. The best resource we could
+find is the book Programmirovanije dlja ECBM Minsk-22 by V. M. Salikov, and the emulator
+is based solely on that plus a bit of guesswork.
+
+<p>We have written a <a href='INSTRUCTIONS'>brief description of the instruction set</a>
+for our own reference.
+
+<p>When using the emulator, please make sure that your browser is able to display
+Cyrillic letters, as all error messages are printed in Russian. (This is not historically
+accurate, the real machine never printed error messages &ndash; it used signal lights on the
+control panel instead.)
+
+<h2>Features</h2>
+
+<p>We have tried to get as close to the behavior of the real machine as we could,
+but the description in the Salikov's book is not as detailed as we would wish,
+so several things remained to be guessed. Here is a list of likely differences
+against the real Minsk-2:
+
+<ul>
+<li>Rounding of fixed-point and floating-point computations is likely to be different.
+<li>Arithmetic overflow is always fatal.
+<li>Exact behavior of negative zero is unknown. We always produce positive zero as a result.
+<li>Contents of the R1 and R2 registers displayed when the program stops probably
+    differ from the real front panel. However, the behavior visible to the program
+    should be correct.
+<li>Among the rich set of I/O devices, only the line printer is implemented.
+<li>Malformed instructions are probably handled differently.
+</ul>
+
+<h2>Input format</h2>
+
+<p>The input to the emulator follows a fairly simple format:
+
+<pre id=output><code>; An example
+
+@0050
+-62 00 7000 1000
+-62 00 7006 1001
+-62 00 7400 0000
+-00 00 0000 0000
+@1000
++65 45 53 53 56 17
++42 56 60 53 44 16
+</code></pre>
+
+<p>Empty lines and lines starting with a semicolon are ignored.
+<code>@xxxx</code> sets the memory address (in octal), all other
+lines specify signed 36-bit octal values to be written to consecutive
+memory cells. Spaces inside numbers are purely decorative and the parser
+ignores them.
+
+<h2>Examples</h2>
+
+<p>Here is a couple of easy example programs for you to try:
+
+<ul>
+<li><a href='.?example=hello'>Hello, world #1</a>
+<li><a href='.?example=hello2'>Hello, world #2</a>
+<li><a href='.?example=arith'>Aritmetics</a>
+<li><a href='.?example=loop'>A simple loop</a>
+</ul>
+
+<h2>Author and copyright</h2>
+
+<p>The emulator has been written by <a href='http://mj.ucw.cz/'>Martin Mareš</a>
+in 2010 and it is copyrighted by its author.
+
+<p>The program is free software. You can freely use it and distribute it under the terms of the
+<a href='http://www.gnu.org/licenses/gpl-2.0.html'>GNU General Public License version 2</a>.
+
+<p>Bug reports and suggestions are welcome (especially from people who have encountered
+the real Minsk), please contact the author by e-mail at <a href='mailto:mj@ucw.cz'>mj@ucw.cz</a>.
+
+<h2>Download</h2>
+
+<p>You can download the source code of the emulator from <a href='ftp://atrey.karlin.mff.cuni.cz/pub/local/mj/minsk'>our FTP server</a>.
+
+<p>It has been developed on Linux with GCC and it should run on all POSIX systems,
+possibly requiring trivial modifications.
+
+</body></html>
