@@ -1,2 +1,18 @@
 AddDefaultCharset utf-8
 DirectoryIndex index.cgi
+
+<Files ~ ".*">
+Deny from all
+</Files>
+
+<Files ~ "\.(cgi|css|html)">
+Allow from all
+</Files>
+
+<Files ~ "^INSTRUCTIONS$">
+Allow from all
+</Files>
+
+<Files ~ "^$">
+Allow from all
+</Files>
