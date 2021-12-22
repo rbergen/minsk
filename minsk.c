@@ -37,6 +37,7 @@ static void (*error_hook)(char *msg);
 // Minsk-2 has 37-bit words in sign-magnitude representation (bit 36 = sign)
 typedef unsigned long long int word;
 
+#define  MEM_SIZE 4096
 #define WORD_MASK 01777777777777ULL
 #define SIGN_MASK 01000000000000ULL
 #define  VAL_MASK 00777777777777ULL
@@ -1245,36 +1246,48 @@ static void setproctitle_init(int argc UNUSED, char **argv UNUSED)
 
 #endif
 
-static void init_memory(void)
+static void init_memory(int set_password)
 {
-  // For the contest, we fill the whole memory with -00 00 0000 0000 (HALT),
-  // not +00 00 0000 0000 (NOP). Otherwise, an empty program would reveal
-  // the location of the password :)
-  for (int i=0; i<4096; i++)
-    mem[i] = 01000000000000ULL;
+  if (set_password)
+    {
+      // For the contest, we fill the whole memory with -00 00 0000 0000 (HALT),
+      // not +00 00 0000 0000 (NOP). Otherwise, an empty program would reveal
+      // the location of the password :)
+      for (int i=0; i<MEM_SIZE; i++)
+        mem[i] = 01000000000000ULL;
 
-  // Store the password
-  int pos = 02655;
-  mem[pos++] = 0574060565373;
-  mem[pos++] = 0371741405340;
-  mem[pos++] = 0534051524017;
+      // Store the password
+      int pos = 02655;
+      mem[pos++] = 0574060565373;
+      mem[pos++] = 0371741405340;
+      mem[pos++] = 0534051524017;
+    }
+  else
+    for (int i=0; i<MEM_SIZE; i++)
+      mem[i] = 00000000000000ULL;
 }
 
 static const struct option longopts[] = {
-  { "cpu-quota",	1, NULL, 'q' },
-  { "daemon",		0, NULL, 'd' },
-  { "nofork",		0, NULL, 'n' },
-  { "print-quota",	1, NULL, 'p' },
-  { "trace",		1, NULL, 't' },
-  { NULL,		0, NULL, 0   },
+  { "cpu-quota",	required_argument, 	NULL, 'q' },
+  { "daemon",		no_argument, 		NULL, 'd' },
+  { "nofork",		no_argument, 		NULL, 'n' },
+  { "set-password",	no_argument,		NULL, 's' },
+  { "print-quota",	required_argument, 	NULL, 'p' },
+  { "trace",		required_argument, 	NULL, 't' },
+  { NULL,		0, 			NULL, 0   },
 };
 
 static void usage(void)
 {
+  fprintf(stderr, "Options:\n\n");
+  #ifdef ENABLE_DAEMON_MODE
   fprintf(stderr, "\
-Options:\n\n\
 --daemon		Run as daemon and listen for network connections\n\
 --nofork		When run with --daemon, avoid forking\n\
+");
+  #endif
+  fprintf(stderr, "\
+--set-password		Put hidden password in memory\n\
 --trace=<level>		Enable tracing of program execution\n\
 --cpu-quota=<n>		Set CPU quota to <n> instructions\n\
 --print-quota=<n>	Set printer quota to <n> lines\n\
@@ -1287,6 +1300,7 @@ int main(int argc, char **argv)
   int opt;
   int daemon_mode = 0;
   int do_fork = 1;
+  int set_password = 0;
 
   while ((opt = getopt_long(argc, argv, "", longopts, NULL)) >= 0)
     switch (opt)
@@ -1296,6 +1310,9 @@ int main(int argc, char **argv)
 	break;
       case 'n':
 	do_fork = 0;
+	break;
+      case 's':
+	set_password = 1;
 	break;
       case 'p':
 	print_quota = atoi(optarg);
@@ -1313,7 +1330,7 @@ int main(int argc, char **argv)
     usage();
 
   setproctitle_init(argc, argv);
-  init_memory();
+  init_memory(set_password);
 
   if (daemon_mode)
     run_as_daemon(do_fork);
