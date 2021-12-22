@@ -32,6 +32,7 @@
 static int trace;
 static int cpu_quota = -1;
 static int print_quota = -1;
+static int english;
 static void (*error_hook)(char *msg);
 
 // Minsk-2 has 37-bit words in sign-magnitude representation (bit 36 = sign)
@@ -171,11 +172,15 @@ static void wr(int addr, word val)
 
 static int lino;
 
-NORETURN static void parse_error(char *msg)
+NORETURN static void parse_error(char *russian_msg, char *english_msg)
 {
   if (error_hook)
     error_hook("Parse error");
-  printf("Ошибка входа (стр. %d): %s\n", lino, msg);
+  
+  if (english)
+    printf("Parse error (line %d): %s\n", lino, english_msg);
+  else
+    printf("Ошибка входа (стр. %d): %s\n", lino, russian_msg);
   exit(0);
 }
 
@@ -189,7 +194,7 @@ static void parse_in(void)
       lino++;
       char *eol = strchr(line, '\n');
       if (!eol)
-	parse_error("Строка слишком долгая");
+	parse_error("Строка слишком долгая", "Line too long");
       *eol = 0;
       if (eol > line && eol[-1] == '\r')
 	*--eol = 0;
@@ -212,12 +217,12 @@ static void parse_in(void)
 	      if (*c >= '0' && *c <= '7')
 		addr = 8*addr + *c++ - '0';
 	      else
-		parse_error("Плохая цифра");
+		parse_error("Плохая цифра", "Invalid number");
 	    }
 	  while (*c == ' ')
 	    c++;
 	  if (*c)
-	    parse_error("Адрес слишком долгий");
+	    parse_error("Адрес слишком долгий", "Address too long");
 	  continue;
 	}
 
@@ -225,7 +230,7 @@ static void parse_in(void)
       if (*c == '-')
 	w = 1;
       else if (*c != '+')
-	parse_error("Плохой знак");
+	parse_error("Плохой знак", "Invalid sign");
       c++;
       for (int i=0; i<12; i++)
 	{
@@ -234,12 +239,12 @@ static void parse_in(void)
 	  if (*c >= '0' && *c <= '7')
 	    w = 8*w + *c++ - '0';
 	  else
-	    parse_error("Плохая цифра");
+	    parse_error("Плохая цифра", "Invalid number");
 	}
       while (*c == ' ')
 	c++;
       if (*c)
-	parse_error("Номер слишком долгий");
+	parse_error("Номер слишком долгий", "Number too long");
       wr(addr++, w);
       addr &= 07777;
     }
@@ -250,12 +255,21 @@ static word r1, r2, current_ins;
 static int ip = 00050;			// Standard program start location
 static int prev_ip;
 
-NORETURN static void stop(char *reason, char *notice)
+NORETURN static void stop(char *russian_reason, char *english_reason)
 {
   if (error_hook)
-    error_hook(notice);
-  printf("Машина остановлена -- %s\n", reason);
-  printf("СчАК:%04o См:%c%012llo Р1:%c%012llo Р2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
+    error_hook(english_reason);
+
+  if (english)
+    {
+      printf("System stopped -- %s\n", english_reason);
+      printf("IP:%04o ACC:%c%012llo R1:%c%012llo R2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
+    }
+  else
+    {
+      printf("Машина остановлена -- %s\n", russian_reason);
+      printf("СчАК:%04o См:%c%012llo Р1:%c%012llo Р2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
+    }
   exit(0);
 }
 
@@ -1271,6 +1285,7 @@ static const struct option longopts[] = {
   { "cpu-quota",	required_argument, 	NULL, 'q' },
   { "daemon",		no_argument, 		NULL, 'd' },
   { "nofork",		no_argument, 		NULL, 'n' },
+  { "english",		no_argument,		NULL, 'e' },
   { "set-password",	no_argument,		NULL, 's' },
   { "print-quota",	required_argument, 	NULL, 'p' },
   { "trace",		required_argument, 	NULL, 't' },
@@ -1287,6 +1302,7 @@ static void usage(void)
 ");
   #endif
   fprintf(stderr, "\
+--english		Print messages in English\n\
 --set-password		Put hidden password in memory\n\
 --trace=<level>		Enable tracing of program execution\n\
 --cpu-quota=<n>		Set CPU quota to <n> instructions\n\
@@ -1310,6 +1326,9 @@ int main(int argc, char **argv)
 	break;
       case 'n':
 	do_fork = 0;
+	break;
+      case 'e':
+	english = 1;
 	break;
       case 's':
 	set_password = 1;
