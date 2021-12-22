@@ -1297,16 +1297,16 @@ static void usage(void)
   fprintf(stderr, "Options:\n\n");
   #ifdef ENABLE_DAEMON_MODE
   fprintf(stderr, "\
---daemon		Run as daemon and listen for network connections\n\
---nofork		When run with --daemon, avoid forking\n\
+-d, --daemon		Run as daemon and listen for network connections\n\
+-n, --nofork		When run with --daemon, avoid forking\n\
 ");
   #endif
   fprintf(stderr, "\
---english		Print messages in English\n\
---set-password		Put hidden password in memory\n\
---trace=<level>		Enable tracing of program execution\n\
---cpu-quota=<n>		Set CPU quota to <n> instructions\n\
---print-quota=<n>	Set printer quota to <n> lines\n\
+-e, --english		Print messages in English\n\
+-s, --set-password	Put hidden password in memory\n\
+-t, --trace=<level>	Enable tracing of program execution\n\
+-q, --cpu-quota=<n>	Set CPU quota to <n> instructions\n\
+-p, --print-quota=<n>	Set printer quota to <n> lines\n\
 ");
   exit(1);
 }
@@ -1318,7 +1318,7 @@ int main(int argc, char **argv)
   int do_fork = 1;
   int set_password = 0;
 
-  while ((opt = getopt_long(argc, argv, "", longopts, NULL)) >= 0)
+  while ((opt = getopt_long(argc, argv, "q:desnp:t:", longopts, NULL)) >= 0)
     switch (opt)
       {
       case 'd':
