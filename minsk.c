@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 #define UNUSED __attribute__((unused))
+#define NORETURN __attribute__((noreturn))
 
 #undef ENABLE_DAEMON_MODE
 
@@ -169,7 +170,7 @@ static void wr(int addr, word val)
 
 static int lino;
 
-static void parse_error(char *msg)
+NORETURN static void parse_error(char *msg)
 {
   if (error_hook)
     error_hook("Parse error");
@@ -248,7 +249,7 @@ static word r1, r2, current_ins;
 static int ip = 00050;			// Standard program start location
 static int prev_ip;
 
-static void stop(char *reason, char *notice)
+NORETURN static void stop(char *reason, char *notice)
 {
   if (error_hook)
     error_hook(notice);
@@ -257,18 +258,18 @@ static void stop(char *reason, char *notice)
   exit(0);
 }
 
-static void over(void)
+NORETURN static void over(void)
 {
   stop("Аварийный останов", "Overflow");
 }
 
-static void notimp(void)
+NORETURN static void notimp(void)
 {
   acc = current_ins;
   stop("Устройство разбитое", "Not implemented");
 }
 
-static void noins(void)
+NORETURN static void noins(void)
 {
   acc = current_ins;
   stop("Эту команду не знаю", "Illegal instruction");
@@ -793,11 +794,9 @@ static void run(void)
     }
 }
 
-static void die(char *msg)
+NORETURN static void die(char *msg)
 {
-  fprintf(stderr, "minsk: ");
-  fprintf(stderr, msg);
-  fputc('\n', stderr);
+  fprintf(stderr, "minsk: %s\n", msg);
   exit(1);
 }
 
