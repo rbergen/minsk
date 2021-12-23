@@ -21,5 +21,5 @@ This is a version modified by [Rutger van Bergen](https://github.com/rbergen). M
 The emulator executable will be called `minsk` if the build succeeds.
 
 ## Documentation
-Original documentation for the emulator can be found in the [readme.html](readme.html) file. The original version of the emulator can be [used on-line](https://mj.ucw.cz/minsk/).
+Original documentation for the emulator can be found in the [readme.html](https://htmlpreview.github.io/?https://github.com/rbergen/minsk/blob/master/readme.html) file. The original version of the emulator can be [used on-line](https://mj.ucw.cz/minsk/).
 
