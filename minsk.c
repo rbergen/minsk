@@ -2,6 +2,15 @@
  *	Minsk-2 Emulator
  *
  *	(c) 2010 Martin Mares <mj@ucw.cz>
+ *
+ * 	Modified by Rutger van Bergen <rbergen@xs4all.nl>:
+ * 	- Address compiler warnings in recent versions of GCC (2021-12-22)
+ * 	- Do not put hidden password in memory unless command-line option is passed (2021-12-22)
+ * 	- Support printing of English (error) messages, in addition to Russian ones (2021-12-22)
+ * 	- Support short command-line options, alongside long ones (2021-12-22)
+ * 
+ * 	The full change log of this file can be accessed on GitHub, from the following URL: 
+ * 	https://github.com/rbergen/minsk/commits/master/minsk.c
  */
 
 /*
