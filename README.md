@@ -1,4 +1,5 @@
 # Minsk-2 emulator by [Martin Mareš](https://github.com/gollux)
+![CI](https://github.com/rbergen/minsk/actions/workflows/CI.yml/badge.svg)
 
 ## Description
 This is a version modified by [Rutger van Bergen](https://github.com/rbergen). Main differences from the original, 1.0 version are:
