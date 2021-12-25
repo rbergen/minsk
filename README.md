@@ -8,7 +8,7 @@ This is a version modified by [Rutger van Bergen](https://github.com/rbergen). M
 - It supports short command-line options, alongside the long ones
 
 ## Build
-1. Make sure you have make, GCC and common libraries installed. On Debian-based Linux distributions, this can be arranged by executing the following commandL
+1. Make sure you have make, GCC and common libraries installed. On Debian-based Linux distributions, this can be arranged by executing the following command:
    ```
    sudo apt-get update && sudo apt-get -y build-essential
    ```
