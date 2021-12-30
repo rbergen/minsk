@@ -8,6 +8,7 @@
  * 	- Do not put hidden password in memory unless command-line option is passed (2021-12-22)
  * 	- Support printing of English (error) messages, in addition to Russian ones (2021-12-22)
  * 	- Support short command-line options, alongside long ones (2021-12-22)
+ * 	- Support memory size of 8192 words with address extensions (2021-12-30)
  * 
  * 	The full change log of this file can be accessed on GitHub, from the following URL: 
  * 	https://github.com/rbergen/minsk/commits/master/minsk.c
@@ -42,15 +43,19 @@ static int trace;
 static int cpu_quota = -1;
 static int print_quota = -1;
 static int english;
+static int ax_enabled;
+static int mem_size = 4096;
 static void (*error_hook)(char *msg);
 
 // Minsk-2 has 37-bit words in sign-magnitude representation (bit 36 = sign)
 typedef unsigned long long int word;
 
-#define  MEM_SIZE 4096
 #define WORD_MASK 01777777777777ULL
 #define SIGN_MASK 01000000000000ULL
 #define  VAL_MASK 00777777777777ULL
+#define ADDR_MASK (mem_size-1)
+#define OPER_MASK 007777
+#define   AX_SUPL 010000
 
 static int wsign(word w)
 {
@@ -161,13 +166,13 @@ static word wfromfloat(double x, int normalized)
   return w;
 }
 
-static word mem[4096];
+static word* mem;
 
 static word rd(int addr)
 {
   word val = addr ? mem[addr] : 0;
   if (trace > 2)
-    printf("\tRD %04o = %c%012llo\n", addr, WF(val));
+    printf("\tRD %05o = %c%012llo\n", addr, WF(val));
   return val;
 }
 
@@ -175,7 +180,7 @@ static void wr(int addr, word val)
 {
   assert(!(val & ~(WORD_MASK)));
   if (trace > 2)
-    printf("\tWR %04o = %c%012llo\n", addr, WF(val));
+    printf("\tWR %05o = %c%012llo\n", addr, WF(val));
   mem[addr] = val;
 }
 
@@ -255,7 +260,7 @@ static void parse_in(void)
       if (*c)
 	parse_error("Номер слишком долгий", "Number too long");
       wr(addr++, w);
-      addr &= 07777;
+      addr &= ADDR_MASK;
     }
 }
 
@@ -272,12 +277,12 @@ NORETURN static void stop(char *russian_reason, char *english_reason)
   if (english)
     {
       printf("System stopped -- %s\n", english_reason);
-      printf("IP:%04o ACC:%c%012llo R1:%c%012llo R2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
+      printf("IP:%05o ACC:%c%012llo R1:%c%012llo R2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
     }
   else
     {
       printf("Машина остановлена -- %s\n", russian_reason);
-      printf("СчАК:%04o См:%c%012llo Р1:%c%012llo Р2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
+      printf("СчАК:%05o См:%c%012llo Р1:%c%012llo Р2:%c%012llo\n", prev_ip, WF(acc), WF(r1), WF(r2));
     }
   exit(0);
 }
@@ -470,32 +475,39 @@ static void run(void)
       word w = mem[ip];
       current_ins = w;
 
-      int op = (w >> 30) & 0177;	// Operation code
-      int ax = (w >> 28) & 3;		// Address extensions not supported
-      int ix = (w >> 24) & 15;		// Indexing
-      int x = (w >> 12) & 07777;	// Operands (original form)
-      int y = w & 07777;
-      int xi=x, yi=y;			// (indexed form)
+      int x = (w >> 12) & OPER_MASK;	// Operands (original form)
+      int y = w & OPER_MASK;
       if (trace)
-	printf("@%04o  %c%02o %02o %04o %04o\n",
+	printf("@%05o  %c%02o %02o %04o %04o\n",
 	  ip,
 	  (w & SIGN_MASK) ? '-' : '+',
 	  (int)((w >> 30) & 077),
 	  (int)((w >> 24) & 077),
 	  x,
 	  y);
+      int op = (w >> 30) & 0177;	// Operation code
+      int ax = (w >> 28) & 3;		// Address extensions only supported in Minsk-22
+      if (ax_enabled)
+	{
+	  if (ax & 2)
+	    x |= AX_SUPL;		// x with address extension
+	  if (ax & 1)
+	    y |= AX_SUPL;		// y with address extension
+	}
+      int xi=x, yi=y;			// Operands (indexed form)
+      int ix = (w >> 24) & 15;		// Indexing
       if (ix)
 	{
 	  if (op != 0120)
 	    {
 	      word i = rd(ix);
-	      xi = (xi + (int)((i >> 12) & 07777)) & 07777;
-	      yi = (yi + (int)(i & 07777)) & 07777;
+	      xi = (xi + (int)((i >> 12) & OPER_MASK)) & ADDR_MASK;
+	      yi = (yi + (int)(i & OPER_MASK)) & ADDR_MASK;
 	      if (trace > 2)
-		printf("\tIndexing -> %04o %04o\n", xi, yi);
+		printf("\tIndexing -> %05o %05o\n", xi, yi);
 	    }
 	}
-      ip = (ip+1) & 07777;
+      ip = (ip+1) & ADDR_MASK;
 
       if (cpu_quota > 0 && !--cpu_quota)
 	stop("Тайм-аут", "CPU quota exceeded");
@@ -549,7 +561,7 @@ static void run(void)
 	  astore(wfromfloat(f, 0));
 	}
 
-      if (ax)
+      if (ax && !ax_enabled)
 	op = -1;
       switch (op)
 	{
@@ -682,8 +694,8 @@ static void run(void)
 	    break;
 	  b = rd(y);		// (a mountain range near Prague)
 	  acc = ((aa-1) << 24) |
-		(((((a >> 12) & 07777) + (b >> 12) & 07777) & 07777) << 12) |
-		(((a & 07777) + (b & 07777)) & 07777);
+		(((((a >> 12) & OPER_MASK) + (b >> 12) & OPER_MASK) & OPER_MASK) << 12) |
+		(((a & OPER_MASK) + (b & OPER_MASK)) & OPER_MASK);
 	  wr(ix, acc);
 	  ip = x;
 	  break;
@@ -692,7 +704,10 @@ static void run(void)
 	  ip = x;
 	  break;
 	case 0131:		// Jump to subroutine
-	  wr(y, acc = ((030ULL << 30) | ((ip & 07777ULL) << 12)));
+	  acc = (0130ULL << 30) | ((ip & OPER_MASK) << 12);
+	  if (ax_enabled && (ip & AX_SUPL))
+	    acc |= 2 << 28;
+	  wr(y, acc);
 	  ip = x;
 	  break;
 	case 0132:		// Jump if positive
@@ -781,7 +796,7 @@ static void run(void)
 	  if (!wabs(a))
 	    {
 	      wr(yi, 0);
-	      wr((yi+1) & 07777, 0);
+	      wr((yi+1) & ADDR_MASK, 0);
 	      acc = 0;
 	    }
 	  else
@@ -796,7 +811,7 @@ static void run(void)
 		}
 	      acc |= a;
 	      wr(yi, acc);
-	      wr((yi+1) & 07777, i);
+	      wr((yi+1) & ADDR_MASK, i);
 	    }
 	  break;
 	case 0176:		// Population count
@@ -1271,12 +1286,14 @@ static void setproctitle_init(int argc UNUSED, char **argv UNUSED)
 
 static void init_memory(int set_password)
 {
+  mem = malloc(sizeof(word)*mem_size);
+
   if (set_password)
     {
       // For the contest, we fill the whole memory with -00 00 0000 0000 (HALT),
       // not +00 00 0000 0000 (NOP). Otherwise, an empty program would reveal
       // the location of the password :)
-      for (int i=0; i<MEM_SIZE; i++)
+      for (int i=0; i<mem_size; i++)
         mem[i] = 01000000000000ULL;
 
       // Store the password
@@ -1286,7 +1303,7 @@ static void init_memory(int set_password)
       mem[pos++] = 0534051524017;
     }
   else
-    for (int i=0; i<MEM_SIZE; i++)
+    for (int i=0; i<mem_size; i++)
       mem[i] = 00000000000000ULL;
 }
 
@@ -1296,6 +1313,7 @@ static const struct option longopts[] = {
   { "nofork",		no_argument, 		NULL, 'n' },
   { "english",		no_argument,		NULL, 'e' },
   { "set-password",	no_argument,		NULL, 's' },
+  { "upgrade-2r",	no_argument,		NULL, 'u' },
   { "print-quota",	required_argument, 	NULL, 'p' },
   { "trace",		required_argument, 	NULL, 't' },
   { NULL,		0, 			NULL, 0   },
@@ -1313,6 +1331,7 @@ static void usage(void)
   fprintf(stderr, "\
 -e, --english		Print messages in English\n\
 -s, --set-password	Put hidden password in memory\n\
+-u, --upgrade-2r	Emulate Minsk-2R instead of Minsk-2\n\
 -t, --trace=<level>	Enable tracing of program execution\n\
 -q, --cpu-quota=<n>	Set CPU quota to <n> instructions\n\
 -p, --print-quota=<n>	Set printer quota to <n> lines\n\
@@ -1327,7 +1346,7 @@ int main(int argc, char **argv)
   int do_fork = 1;
   int set_password = 0;
 
-  while ((opt = getopt_long(argc, argv, "q:desnp:t:", longopts, NULL)) >= 0)
+  while ((opt = getopt_long(argc, argv, "q:desunp:t:", longopts, NULL)) >= 0)
     switch (opt)
       {
       case 'd':
@@ -1341,6 +1360,10 @@ int main(int argc, char **argv)
 	break;
       case 's':
 	set_password = 1;
+	break;
+      case 'u':
+	mem_size = 8192;
+	ax_enabled = 1;
 	break;
       case 'p':
 	print_quota = atoi(optarg);

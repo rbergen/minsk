@@ -1,10 +1,10 @@
-MINSK-2 INSTRUCTION SET
-~~~~~~~~~~~~~~~~~~~~~~~
+MINSK-2/MINSK-2R INSTRUCTION SET
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Data format:
 
-	The memory of the machine consists of 4096 37-bit words (the topmost bit
-	is always used as a sign). The 0th memory cell is hard-wired to 0, writes
-	have no effect.
+	The memory of the machine consists of 4096 or, in Minsk-2R mode, 8192 37-bit 
+	words (the topmost bit is always used as a sign). The 0th memory cell is 
+	hard-wired to 0, writes have no effect.
 
 	Fixed-point numbers: sign and 36 significant bits
 
@@ -28,10 +28,10 @@ Data format:
 
 Registers:
 
-Minsk-2 has 3 registers:
+Minsk-2(R) has 3 registers:
 
 	accumulator	usually keeps the result of the previous arithmetic operation
-	R1		usually copies one of the operand of the instruction
+	R1		usually copies one of the operands of the instruction
 	R2		contains the value of acc
 
 (most programs use only the accumulator)
@@ -49,17 +49,36 @@ sop mm xxxx yyyy
 
 Indexing mode bits:
 
-  aa iiii
+  ab iiii
    |   |
    |   +---- index register: when non-zero, lower 12 bits of the memory
    |         cell #iiii are added to yyyy, next 12 bits are added to xxxx
-   +----- address extension (supported only on Minsk-22, not in our Minsk-2)
+   +----- address extension (supported only in Minsk-2R mode):
+          the right-hand bit adds an additional high bit to yyyy (byyyy)
+          the left-hand bit adds an additional high bit to xxxx (axxxx)
+
+
+Note on Minsk-2R emulation:
+
+	Minsk-2R emulation was added by Rutger van Bergen. It's my best guess of 
+	how the Minsk-22 would have been implemented, based on the very limited
+	information I have available. 
+	When the emulator is run in Minsk-2R mode, the following is applied:
+	
+		The memory size is increased from 4096 words to 8192 words
+		The address extension bits are interpreted as indicated above
+
+	Note that only the memory size change is based on documentation. The way
+	the address extension bits are interpreted and applied is based solely on
+	my definition of common sense, and my application of Occam's razor. That 
+	includes the decision to not pull in address extension bits from the index 
+	memory cell, if/when indexing is applied.
 
 
 For arithmetic instructions, the lower 2 bits of <sop> encode addressing mode:
 
-	0?: arg_a = mem[y], arg_b = mem[x]
-	1?: arg_a = previous value of accumulator, arg_b = mem[x]
+	0?: a = mem[y], b = mem[x]
+	1?: a = previous value of accumulator, b = mem[x]
 	?0: store result to accumulator
 	?1: store result to both accumulator and mem[y]
 
