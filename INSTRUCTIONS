@@ -101,7 +101,7 @@ Instructions:
 +64-67		a << b  (b may be negative)
 +70-73		a&b
 +74-77		a|b
--00		HALT, store x to R1 and y to accumulator
+-00		HALT, store mem[x] to R1 and mem[y] to accumulator
 -03		Magnetic tape I/O -- NOTIMP
 -04		Disable rounding -- NOTIMP
 -05		Enable rounding -- NOTIMP
