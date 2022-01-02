@@ -683,7 +683,7 @@ static void run(void)
 	  ip = x;
 	  break;
 	case 0131:		// Jump to subroutine
-	  wr(y, acc = ((030ULL << 30) | ((ip & 07777ULL) << 12)));
+	  wr(y, acc = ((0130ULL << 30) | ((ip & 07777ULL) << 12)));
 	  ip = x;
 	  break;
 	case 0132:		// Jump if positive
