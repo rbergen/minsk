@@ -33,6 +33,7 @@ static int trace;
 static int cpu_quota = -1;
 static int print_quota = -1;
 static int english;
+static int memblocks = 1;
 static void (*error_hook)(char *msg);
 
 // Minsk-2 has 37-bit words in sign-magnitude representation (bit 36 = sign)
@@ -42,6 +43,12 @@ typedef unsigned long long int word;
 #define WORD_MASK 01777777777777ULL
 #define SIGN_MASK 01000000000000ULL
 #define  VAL_MASK 00777777777777ULL
+
+typedef struct loc 
+{
+  int block;
+  int address;
+} loc;
 
 static int wsign(word w)
 {
@@ -54,6 +61,7 @@ static word wabs(word w)
 }
 
 #define WF(w) (wsign(w) < 0 ? '-' : '+'), wabs(w)
+#define LF(a) (a.block), (a.address)
 
 static long long wtoll(word w)
 {
@@ -152,22 +160,22 @@ static word wfromfloat(double x, int normalized)
   return w;
 }
 
-static word mem[4096];
+static word **mem;
 
-static word rd(int addr)
+static word rd(loc addr)
 {
-  word val = addr ? mem[addr] : 0;
+  word val = addr.address ? mem[addr.block][addr.address] : 0;
   if (trace > 2)
-    printf("\tRD %04o = %c%012llo\n", addr, WF(val));
+    printf("\tRD %d:%04o = %c%012llo\n", LF(addr), WF(val));
   return val;
 }
 
-static void wr(int addr, word val)
+static void wr(loc addr, word val)
 {
   assert(!(val & ~(WORD_MASK)));
   if (trace > 2)
-    printf("\tWR %04o = %c%012llo\n", addr, WF(val));
-  mem[addr] = val;
+    printf("\tWR %d:%04o = %c%012llo\n", LF(addr), WF(val));
+  mem[addr.block][addr.address] = val;
 }
 
 static int lino;
@@ -187,7 +195,7 @@ NORETURN static void parse_error(char *russian_msg, char *english_msg)
 static void parse_in(void)
 {
   char line[80];
-  int addr = 0;
+  loc addr = { 0, 0 };
 
   while (fgets(line, sizeof(line), stdin))
     {
@@ -209,13 +217,13 @@ static void parse_in(void)
       if (c[0] == '@')
 	{
 	  c++;
-	  addr = 0;
+	  addr.address = 0;
 	  for (int i=0; i<4; i++)
 	    {
 	      while (*c == ' ')
 		c++;
 	      if (*c >= '0' && *c <= '7')
-		addr = 8*addr + *c++ - '0';
+		addr.address = 8*addr.address + *c++ - '0';
 	      else
 		parse_error("Плохая цифра", "Invalid number");
 	    }
@@ -245,8 +253,8 @@ static void parse_in(void)
 	c++;
       if (*c)
 	parse_error("Номер слишком долгий", "Number too long");
-      wr(addr++, w);
-      addr &= 07777;
+      wr(addr, w);
+      addr.address = (addr.address+1) & 07777;
     }
 }
 
@@ -355,7 +363,7 @@ static void print_line(int r)
   fflush(stdout);
 }
 
-static void print_ins(int x, int y)
+static void print_ins(int x, loc y)
 {
   word yy = rd(y);
   int pos = x & 0177;
@@ -458,32 +466,33 @@ static void run(void)
     {
       r2 = acc;
       prev_ip = ip;
-      word w = mem[ip];
+      word w = mem[0][ip];
       current_ins = w;
 
       int op = (w >> 30) & 0177;	// Operation code
-      int ax = (w >> 28) & 3;		// Address extensions not supported
+      int ax = (w >> 28) & 3;		// Address extensions supported in Minsk-22 mode
       int ix = (w >> 24) & 15;		// Indexing
-      int x = (w >> 12) & 07777;	// Operands (original form)
-      int y = w & 07777;
-      int xi=x, yi=y;			// (indexed form)
+      loc x = { ax & 2, (w >> 12) & 07777 };	// Operands (original form)
+      loc y = { ax & 1, w & 07777 };
+      loc xi=x, yi=y;			// (indexed form)
       if (trace)
-	printf("@%04o  %c%02o %02o %04o %04o\n",
+	printf("@%04o  %c%02o %02o %d:%04o %d:%04o\n",
 	  ip,
 	  (w & SIGN_MASK) ? '-' : '+',
 	  (int)((w >> 30) & 077),
 	  (int)((w >> 24) & 077),
-	  x,
-	  y);
+	  LF(x),
+	  LF(y));
       if (ix)
 	{
 	  if (op != 0120)
 	    {
-	      word i = rd(ix);
-	      xi = (xi + (int)((i >> 12) & 07777)) & 07777;
-	      yi = (yi + (int)(i & 07777)) & 07777;
+	      loc iaddr = { 0, ix };
+	      word i = rd(iaddr);
+	      xi.address = (xi.address + (int)((i >> 12) & 07777)) & 07777;
+	      yi.address = (yi.address + (int)(i & 07777)) & 07777;
 	      if (trace > 2)
-		printf("\tIndexing -> %04o %04o\n", xi, yi);
+		printf("\tIndexing -> %d:%04o %d:%04o\n", LF(xi), LF(yi));
 	    }
 	}
       ip = (ip+1) & 07777;
@@ -540,7 +549,7 @@ static void run(void)
 	  astore(wfromfloat(f, 0));
 	}
 
-      if (ax)
+      if (ax && memblocks == 1)	// Reject address extensions if we only have 1 memory block
 	op = -1;
       switch (op)
 	{
@@ -667,7 +676,8 @@ static void run(void)
 	case 0120:		// Loop
 	  if (!ix)
 	    noins();
-	  a = r1 = rd(ix);
+	  loc iaddr = { 0, ix };
+	  a = r1 = rd(iaddr);
 	  aa = (a >> 24) & 017777;
 	  if (!aa)
 	    break;
@@ -675,36 +685,36 @@ static void run(void)
 	  acc = ((aa-1) << 24) |
 		(((((a >> 12) & 07777) + (b >> 12) & 07777) & 07777) << 12) |
 		(((a & 07777) + (b & 07777)) & 07777);
-	  wr(ix, acc);
-	  ip = x;
+	  wr(iaddr, acc);
+	  ip = x.address;
 	  break;
 	case 0130:		// Jump
 	  wr(y, r2);
-	  ip = x;
+	  ip = x.address;
 	  break;
 	case 0131:		// Jump to subroutine
 	  wr(y, acc = ((0130ULL << 30) | ((ip & 07777ULL) << 12)));
-	  ip = x;
+	  ip = x.address;
 	  break;
 	case 0132:		// Jump if positive
 	  if (wsign(r2) >= 0)
-	    ip = x;
+	    ip = x.address;
 	  else
-	    ip = y;
+	    ip = y.address;
 	  break;
 	case 0133:		// Jump if overflow
 	  // Since we always trap on overflow, this instruction always jumps to the 1st address
-	  ip = x;
+	  ip = x.address;
 	  break;
 	case 0134:		// Jump if zero
 	  if (!wabs(r2))
-	    ip = y;
+	    ip = y.address;
 	  else
-	    ip = x;
+	    ip = x.address;
 	  break;
 	case 0135:		// Jump if key pressed
 	  // No keys are ever pressed, so always jump to 2nd
-	  ip = y;
+	  ip = y.address;
 	  break;
 	case 0136:		// Interrupt masking
 	  notimp();
@@ -717,7 +727,7 @@ static void run(void)
 	case 0160 ... 0161:	// I/O
 	  notimp();
 	case 0162:		// Printing
-	  print_ins(x, y);
+	  print_ins(x.address, y);
 	  break;
 	case 0163:		// I/O
 	  notimp();
@@ -772,7 +782,8 @@ static void run(void)
 	  if (!wabs(a))
 	    {
 	      wr(yi, 0);
-	      wr((yi+1) & 07777, 0);
+	      loc yinc = { yi.block, (yi.address+1) & 07777 };
+	      wr(yinc, 0);
 	      acc = 0;
 	    }
 	  else
@@ -787,7 +798,8 @@ static void run(void)
 		}
 	      acc |= a;
 	      wr(yi, acc);
-	      wr((yi+1) & 07777, i);
+	      loc yinc = { yi.block, (yi.address+1) & 07777 };
+	      wr(yinc, i);
 	    }
 	  break;
 	case 0176:		// Population count
@@ -1262,23 +1274,29 @@ static void setproctitle_init(int argc UNUSED, char **argv UNUSED)
 
 static void init_memory(int set_password)
 {
+  mem = malloc(memblocks * sizeof(word *));
+  for (int i=0; i<memblocks; i++)
+    mem[i] = malloc(MEM_SIZE * sizeof(word));
+
   if (set_password)
     {
       // For the contest, we fill the whole memory with -00 00 0000 0000 (HALT),
       // not +00 00 0000 0000 (NOP). Otherwise, an empty program would reveal
       // the location of the password :)
-      for (int i=0; i<MEM_SIZE; i++)
-        mem[i] = 01000000000000ULL;
+      for (int i=0; i<memblocks; i++)
+        for (int j=0; i<MEM_SIZE; j++)
+          mem[i][j] = 01000000000000ULL;
 
       // Store the password
       int pos = 02655;
-      mem[pos++] = 0574060565373;
-      mem[pos++] = 0371741405340;
-      mem[pos++] = 0534051524017;
+      mem[0][pos++] = 0574060565373;
+      mem[0][pos++] = 0371741405340;
+      mem[0][pos++] = 0534051524017;
     }
   else
-    for (int i=0; i<MEM_SIZE; i++)
-      mem[i] = 00000000000000ULL;
+    for (int i=0; i<memblocks; i++)
+      for (int j=0; j<MEM_SIZE; j++)
+        mem[i][j] = 00000000000000ULL;
 }
 
 static const struct option longopts[] = {
@@ -1287,6 +1305,7 @@ static const struct option longopts[] = {
   { "nofork",		no_argument, 		NULL, 'n' },
   { "english",		no_argument,		NULL, 'e' },
   { "set-password",	no_argument,		NULL, 's' },
+  { "upgrade",		no_argument,		NULL, 'u' },
   { "print-quota",	required_argument, 	NULL, 'p' },
   { "trace",		required_argument, 	NULL, 't' },
   { NULL,		0, 			NULL, 0   },
@@ -1304,6 +1323,7 @@ static void usage(void)
   fprintf(stderr, "\
 -e, --english		Print messages in English\n\
 -s, --set-password	Put hidden password in memory\n\
+-u, --upgrade		Upgrade the Minsk-2 to the Minsk-22\n\
 -t, --trace=<level>	Enable tracing of program execution\n\
 -q, --cpu-quota=<n>	Set CPU quota to <n> instructions\n\
 -p, --print-quota=<n>	Set printer quota to <n> lines\n\
@@ -1318,7 +1338,7 @@ int main(int argc, char **argv)
   int do_fork = 1;
   int set_password = 0;
 
-  while ((opt = getopt_long(argc, argv, "q:desnp:t:", longopts, NULL)) >= 0)
+  while ((opt = getopt_long(argc, argv, "q:desunp:t:", longopts, NULL)) >= 0)
     switch (opt)
       {
       case 'd':
@@ -1332,6 +1352,9 @@ int main(int argc, char **argv)
 	break;
       case 's':
 	set_password = 1;
+	break;
+      case 'u':
+	memblocks = 2;
 	break;
       case 'p':
 	print_quota = atoi(optarg);
@@ -1356,5 +1379,6 @@ int main(int argc, char **argv)
 
   parse_in();
   run();
+  
   return 0;
 }
