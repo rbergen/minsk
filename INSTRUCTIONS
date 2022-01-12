@@ -1,10 +1,12 @@
-MINSK-2 INSTRUCTION SET
-~~~~~~~~~~~~~~~~~~~~~~~
+MINSK-2/MINSK-22 INSTRUCTION SET
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Data format:
 
-	The memory of the machine consists of 4096 37-bit words (the topmost bit
+	The memory of the Minsk-2 machine consists of 4096 37-bit words (the topmost bit
 	is always used as a sign). The 0th memory cell is hard-wired to 0, writes
 	have no effect.
+
+	The Minsk-22 machine has 2 banks of 4096 37-bit words each.
 
 	Fixed-point numbers: sign and 36 significant bits
 
@@ -28,7 +30,7 @@ Data format:
 
 Registers:
 
-Minsk-2 has 3 registers:
+Minsk-2/Minsk-22 has 3 registers:
 
 	accumulator	usually keeps the result of the previous arithmetic operation
 	R1		usually copies one of the operand of the instruction
@@ -53,7 +55,26 @@ Indexing mode bits:
    |   |
    |   +---- index register: when non-zero, lower 12 bits of the memory
    |         cell #iiii are added to yyyy, next 12 bits are added to xxxx
-   +----- address extension (supported only on Minsk-22, not in our Minsk-2)
+   +----- address extension (supported only on Minsk-22)
+
+
+Address extension:
+
+	In Minsk-22 mode, the address extension bits can be used to access the second
+	bank of memory in the machine. Each of the bits selects the memory bank 
+	(either 0 or 1) that one of the operands operate on:
+	 
+		The first (high) bit selects the memory bank for operand1 (x)
+		The second (low) bit selects the memory bank for operand2 (y)
+
+	The instruction pointer always operates on bank 0. This extends to situations 
+	where a (jump) instruction sets the instruction pointer to either x or y; the 
+	address extension bits are effectively ignored in those cases.
+
+	Similarly, the indexing word is always read from bank 0.
+
+	In Minsk-2 mode, setting the address extension bits to anything but 0 is an
+	error in all cases.
 
 
 For arithmetic instructions, the lower 2 bits of <sop> encode addressing mode:
