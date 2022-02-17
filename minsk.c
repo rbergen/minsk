@@ -44,7 +44,7 @@ typedef unsigned long long int word;
 #define SIGN_MASK 01000000000000ULL
 #define  VAL_MASK 00777777777777ULL
 
-typedef struct loc 
+typedef struct loc
 {
   int block;
   int address;
@@ -184,7 +184,7 @@ NORETURN static void parse_error(char *russian_msg, char *english_msg)
 {
   if (error_hook)
     error_hook("Parse error");
-  
+
   if (english)
     printf("Parse error (line %d): %s\n", lino, english_msg);
   else
@@ -472,7 +472,7 @@ static void run(void)
       int op = (w >> 30) & 0177;	// Operation code
       int ax = (w >> 28) & 3;		// Address extensions supported in Minsk-22 mode
       int ix = (w >> 24) & 15;		// Indexing
-      loc x = { ax & 2, (w >> 12) & 07777 };	// Operands (original form)
+      loc x = { (ax & 2) >> 1, (w >> 12) & 07777 };	// Operands (original form)
       loc y = { ax & 1, w & 07777 };
       loc xi=x, yi=y;			// (indexed form)
       if (trace)
@@ -1379,6 +1379,6 @@ int main(int argc, char **argv)
 
   parse_in();
   run();
-  
+
   return 0;
 }
