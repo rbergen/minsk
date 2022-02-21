@@ -50,7 +50,7 @@ if ($src ne '') {
 	print $tmpf $src, "\n";
 	$tmpf->flush();
 	my $in = $tmpf->filename;
-	open SIM, "./minsk --trace=$trace --cpu-quota=1000 --print-quota=100 <$in |" or die;
+	open SIM, "./minsk --set-password --trace=$trace --cpu-quota=1000 --print-quota=100 <$in |" or die;
 	while (<SIM>) {
 		print html_escape($_);
 	}

@@ -3,22 +3,24 @@
 <title>Minsk-2 Emulator</title>
 <link rel=stylesheet title=Default href="minsk.css" type="text/css" media=all>
 </head><body>
-<h1>Minsk-2 Emulator</h1>
+<h1>Minsk-2/Minsk-22 Emulator</h1>
 
 <p id=top>(see it <a href='.'>in action</a>)
 
 <h2>Introduction</h2>
 
-<p>This is an emulator of Минск-2 (Minsk-2) &ndash; a mainframe computer from
-the Soviet era, produced around 1963 in the Byelorussian SSR.
+<p>This is an emulator of the Минск-2 (Minsk-2) and Минск-22 (Minsk-22) &ndash; 
+mainframe computers from the Soviet era, produced around 1963 and 1965 respectively,
+in the Byelorussian SSR.
 
-<p>We have written the emulator for a task in the <a href='http://www.podrate.cz/'>Po drátě</a>
-hacking contest (sorry, the page is in Czech only). The participants were to
-find a password hidden in the machine's memory, which involved figuring out how
-the machine works and reconstructing at least a part of its instruction set.
+<p>The Minsk-2 emulator was originally written for a task in the
+<a href='http://www.podrate.cz/'>Po drátě</a> hacking contest (sorry, the page is in
+Czech only). The participants were to find a password hidden in the machine's memory,
+which involved figuring out how the machine works and reconstructing at least a part 
+of its instruction set.
 You can try your luck, the password is still there.
 
-<p>Online resources about this machine are rather scarce. English Wikipedia contains
+<p>Online resources about these machines are rather scarce. English Wikipedia contains
 a fairly short article on the <a href='http://en.wikipedia.org/wiki/Minsk_family_of_computers'>Minsk
 family of computers</a>, Russian Wikipedia reveals a couple of technical details on
 <a href='http://ru.wikipedia.org/wiki/%D0%9C%D0%B8%D0%BD%D1%81%D0%BA-22'>Minsk-22</a>,
@@ -38,10 +40,10 @@ control panel instead.)
 
 <h2>Features</h2>
 
-<p>We have tried to get as close to the behavior of the real machine as we could,
+<p>We have tried to get as close to the behavior of the real machines as we could,
 but the description in the Salikov's book is not as detailed as we would wish,
 so several things remained to be guessed. Here is a list of likely differences
-against the real Minsk-2:
+against the real Minsk-2/Minsk-22:
 
 <ul>
 <li>Rounding of fixed-point and floating-point computations is likely to be different.
@@ -89,8 +91,12 @@ ignores them.
 
 <h2>Author and copyright</h2>
 
-<p>The emulator has been written by <a href='http://mj.ucw.cz/'>Martin Mareš</a>
+<p>The Minsk-2 emulator has been written by <a href='http://mj.ucw.cz/'>Martin Mareš</a>
 in 2010 and it is copyrighted by its author.
+
+<p>Minsk-22 emulation and some other changes were added by 
+<a href='https://www.linkedin.com/in/rutgervanbergen/'>Rutger van Bergen</a> in 
+2021/2022.
 
 <p>The program is free software. You can freely use it and distribute it under the terms of the
 <a href='http://www.gnu.org/licenses/gpl-2.0.html'>GNU General Public License version 2</a>.
@@ -102,7 +108,29 @@ the real Minsk), please contact the author by e-mail at <a href='mailto:mj@ucw.c
 
 <p>You can download the <a href='http://mj.ucw.cz/download/minsk/'>source code of the emulator</a>.
 
-<p>It has been developed on Linux with GCC and it should run on all POSIX systems,
-possibly requiring trivial modifications.
+<h2>Build</h2>
+
+<p>The emulator has been developed on Linux with GCC and it should build and run on all POSIX systems,
+possibly requiring trivial modifications. 
+
+<p>On a system with the GNU toolchain installed, the emulator can be built by running the following
+command:
+<pre>
+$ make
+</pre>
+
+<h2><a id="use">Use</a></h2>
+
+<p>The emulator reads its input from stdin. Loading and executing the ex-hello example program
+would therefore be done like this:
+<pre>
+$ ./minsk &lt; ex-hello
+</pre>
+
+<p>The list of supported options can be acquired by running the emulator with any
+unsupported option:
+<pre>
+$ ./minsk -h
+</pre>
 
 </body></html>
