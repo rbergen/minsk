@@ -472,7 +472,7 @@ static void run(void)
       int op = (w >> 30) & 0177;	// Operation code
       int ax = (w >> 28) & 3;		// Address extensions supported in Minsk-22 mode
       int ix = (w >> 24) & 15;		// Indexing
-      loc x = { (ax & 2) >> 1, (w >> 12) & 07777 };	// Operands (original form)
+      loc x = { ax >> 1, (w >> 12) & 07777 };	// Operands (original form)
       loc y = { ax & 1, w & 07777 };
       loc xi=x, yi=y;			// (indexed form)
       if (trace)
