@@ -42,6 +42,25 @@ The list of supported options can be acquired by running the emulator with any u
 ./minsk -h
 ```
 
+## Input format
+
+The input to the emulator follows a fairly simple format:
+
+```text
+; An example
+
+@0050
+-62 00 7000 1000
+-62 00 7006 1001
+-62 00 7400 0000
+-00 00 0000 0000
+@1000
++65 45 53 53 56 17
++42 56 60 53 44 16
+```
+
+Empty lines and lines starting with a semicolon are ignored. `@xxxx` sets the memory address (in octal), all other lines specify signed 36-bit octal values to be written to consecutive memory cells. Spaces inside numbers are purely decorative and the parser ignores them.
+
 ## Documentation
 
 Introductory documentation for the emulator can be found in the [readme.html](https://htmlpreview.github.io/?https://github.com/rbergen/minsk/blob/master/readme.html) file.
