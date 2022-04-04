@@ -24,6 +24,22 @@ This is a version modified by [Rutger van Bergen](https://github.com/rbergen). T
 
 The emulator executable will be called `minsk` if the build succeeds.
 
+## Use
+
+The emulator reads its input from stdin. Loading and executing the ex-hello example program would therefore be done like this:
+
+```text
+./minsk < ex-hello
+```
+
+Any output written to the emulated printer will be directed to stdout, as is any tracing information.
+
+The list of supported options can be acquired by running the emulator with any unsupported option:
+
+```text
+./minsk -h
+```
+
 ## Documentation
 
 Introductory documentation for the emulator can be found in the [readme.html](https://htmlpreview.github.io/?https://github.com/rbergen/minsk/blob/master/readme.html) file.
