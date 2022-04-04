@@ -1,5 +1,7 @@
 # Minsk-2 emulator with Minsk-22 support
 
+[![CI](https://github.com/rbergen/minsk/actions/workflows/CI.yml/badge.svg)](https://github.com/rbergen/minsk/actions/workflows/CI.yml)
+
 ## Description
 
 The minsk emulator in this repository was originally developed by [Martin Mareš](https://github.com/gollux) in 2010.
