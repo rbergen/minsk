@@ -1284,7 +1284,7 @@ static void init_memory(int set_password)
       // not +00 00 0000 0000 (NOP). Otherwise, an empty program would reveal
       // the location of the password :)
       for (int i=0; i<memblocks; i++)
-        for (int j=0; i<MEM_SIZE; j++)
+        for (int j=0; j<MEM_SIZE; j++)
           mem[i][j] = 01000000000000ULL;
 
       // Store the password
