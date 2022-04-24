@@ -1,4 +1,4 @@
-VERSION=1.0
+VERSION=1.1
 ARCHIVE=minsk-$(VERSION).tar.gz
 
 CC=gcc
