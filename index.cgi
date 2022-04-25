@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use lib '../lib';
+use lib '../../lib/perl';
 use UCW::CGI;
 use File::Temp;
 use POSIX;
@@ -74,6 +74,6 @@ EOF
 
 print <<EOF ;
 <hr>
-<p>Written by <a href='http://mj.ucw.cz/'>Martin Mareš</a>. Version 1.0 (2010-12-27).
+<p>Written by <a href='http://mj.ucw.cz/'>Martin Mareš</a> and Rutger van Bergen. Version 1.1 (2022-04-24).
 </body></html>
 EOF
