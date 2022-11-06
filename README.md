@@ -6,7 +6,7 @@
 
 The minsk emulator in this repository was originally developed by [Martin Mareš](https://github.com/gollux) in 2010.
 
-This is a version modified by [Rutger van Bergen](https://github.com/rbergen). The main difference from the original version is that this one includes support for the Minsk-22, which is basically a version of the Minsk-2 with double the memory and additional I/O devices. As I/O device support in the emulator is very limited, only the difference in memory is relevant in this context.
+This is a version modified by [Rutger van Bergen](https://github.com/rbergen). With the adoption of support for the Minsk-22 in [the oiginal emulator](https://mj.ucw.cz/minsk/readme.html), both are functionally identical.
 
 ## Build
 
@@ -67,6 +67,6 @@ Introductory documentation for the emulator can be found in the [readme.html](ht
 
 The [INSTRUCTIONS](INSTRUCTIONS) file contains more technical information about the Minsk-2/Minsk-22, its instruction set and their implementation in the emulator.
 
-## Original version
+## Original emulator
 
-The original version of the emulator can be [used on-line](https://mj.ucw.cz/minsk/).
+The original emulator can be [used on-line](https://mj.ucw.cz/minsk/).
